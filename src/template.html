@@ -99,6 +99,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 .btn:hover { background: var(--bg-secondary); }
 .btn-primary { background: var(--text-primary); color: var(--bg-primary); border-color: var(--text-primary); }
 .btn-primary:hover { opacity: 0.85; background: var(--text-primary); }
+.btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 .btn-danger { border-color: var(--text-danger); color: var(--text-danger); }
 .btn-danger:hover { background: var(--bg-danger); }
@@ -292,8 +293,8 @@ details.about .about-body { padding: 0 1.25rem 1.25rem; font-size: 13px; color: 
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" id="generate-btn" onclick="generate()">generate + save</button>
-      <button class="btn" onclick="clearAll()">clear</button>
+      <button class="btn btn-primary" id="generate-btn" onclick="generate()" disabled>generate + save</button>
+      <button class="btn" id="clear-btn" onclick="clearAll()" disabled>clear</button>
     </div>
 
     <div id="result-area" class="hidden">
@@ -390,8 +391,18 @@ loadDB();
 // Reflects whether the current action will also save the entry.
 
 function updateGenerateBtn() {
-  const saving = document.getElementById('autosave').checked;
-  document.getElementById('generate-btn').textContent = saving ? 'generate + save' : 'generate';
+  const saving  = document.getElementById('autosave').checked;
+  const btn     = document.getElementById('generate-btn');
+  btn.textContent = saving ? 'generate + save' : 'generate';
+  const master  = document.getElementById('master').value;
+  const site    = document.getElementById('site').value;
+  btn.disabled  = !master || !site;
+}
+
+function updateClearBtn() {
+  const master = document.getElementById('master').value;
+  const site   = document.getElementById('site').value;
+  document.getElementById('clear-btn').disabled = !currentPw && !master && !site;
 }
 
 // ── Tab switching ──────────────────────────────────────────────────────────
@@ -543,6 +554,8 @@ async function onSiteSelectChange() {
 
 function onMasterInput() {
   updateStrengthBar();
+  updateGenerateBtn();
+  updateClearBtn();
   clearTimeout(autoLoadTimer);
   autoLoadTimer = setTimeout(() => {
     autoLoadOptions();
@@ -554,6 +567,8 @@ function onSiteInput() {
   // Clear the "already loaded" flag so options reload when the user navigates
   // away and comes back to a previously-saved site name.
   document.getElementById('site').dataset.lastLoaded = '';
+  updateGenerateBtn();
+  updateClearBtn();
   clearTimeout(autoLoadTimer);
   autoLoadTimer = setTimeout(autoLoadOptions, 300);
 }
@@ -602,6 +617,7 @@ async function generate() {
   document.getElementById('reveal-btn').textContent = '👁';
   document.getElementById('result-area').classList.remove('hidden');
   document.getElementById('copy-msg').innerHTML = '';
+  updateClearBtn();
 
   if (document.getElementById('autosave').checked) {
     const hash  = await siteHash(site, master);
@@ -667,6 +683,8 @@ function clearAll() {
   document.getElementById('copy-msg').innerHTML         = '';
   document.getElementById('strength-bar').style.width   = '0';
   document.getElementById('strength-label').textContent = '';
+  updateGenerateBtn();
+  updateClearBtn();
 }
 
 // ── Sites tab ──────────────────────────────────────────────────────────────
