@@ -294,6 +294,118 @@ asyncTest('contains only lowercase when lower-only', async () => {
   assert(/^[a-z]+$/.test(pw), `unexpected chars in: ${pw}`);
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('buildExportPayload / applyImport');
+
+// Helper: build a minimal db entry with encrypted site name.
+async function makeEntry(hash, master, site, opts = {}) {
+  const encSite  = await encrypt(site, master);
+  const encAlias = opts.alias ? await encrypt(opts.alias, master) : null;
+  return {
+    hash,
+    len:     opts.len     ?? 20,
+    counter: opts.counter ?? 1,
+    upper:   opts.upper   ?? true,
+    lower:   opts.lower   ?? true,
+    digits:  opts.digits  ?? true,
+    symbols: opts.symbols ?? true,
+    encSite, encAlias,
+  };
+}
+
+asyncTest('export produces valid v3 structure', async () => {
+  const master = 'testmaster';
+  const hash   = await siteHash('github', master);
+  const db     = { [hash]: await makeEntry(hash, master, 'github') };
+
+  const { payload } = await buildExportPayload(db, master);
+
+  assertEqual(payload.vaultless, 3);
+  assert(typeof payload.kdf_salt === 'string', 'kdf_salt should be a string');
+  assert(payload.entries[hash],                'entry should be present');
+  assert(typeof payload.entries[hash].iv === 'string', 'iv should be a string');
+  assert(typeof payload.entries[hash].ct === 'string', 'ct should be a string');
+});
+
+asyncTest('unchanged entries produce identical ciphertext on re-export', async () => {
+  const master = 'testmaster';
+  const hash   = await siteHash('github', master);
+  const db     = { [hash]: await makeEntry(hash, master, 'github') };
+
+  const { payload: p1 } = await buildExportPayload(db, master);
+  const { payload: p2 } = await buildExportPayload(db, master);
+
+  assertEqual(p1.kdf_salt,           p2.kdf_salt,           'kdf_salt should be stable');
+  assertEqual(p1.entries[hash].iv,   p2.entries[hash].iv,   'iv should be stable');
+  assertEqual(p1.entries[hash].ct,   p2.entries[hash].ct,   'ct should be stable');
+});
+
+asyncTest('changed entry gets new ct; unchanged neighbour stays the same', async () => {
+  const master = 'testmaster';
+  const hGH    = await siteHash('github', master);
+  const hEM    = await siteHash('email',  master);
+  const db     = {
+    [hGH]: await makeEntry(hGH, master, 'github'),
+    [hEM]: await makeEntry(hEM, master, 'email'),
+  };
+
+  const { payload: p1 } = await buildExportPayload(db, master);
+
+  // Simulate updating github entry (replaces object, clearing cached exportIv/exportCt).
+  db[hGH] = await makeEntry(hGH, master, 'github', { counter: 2 });
+
+  const { payload: p2 } = await buildExportPayload(db, master);
+
+  assert(p1.entries[hGH].ct !== p2.entries[hGH].ct, 'changed entry should have new ct');
+  assertEqual(p1.entries[hEM].ct, p2.entries[hEM].ct, 'unchanged entry should keep same ct');
+});
+
+asyncTest('import round-trip: exported then re-imported entries are correct', async () => {
+  const master = 'testmaster';
+  const hash   = await siteHash('github', master);
+  const db1    = { [hash]: await makeEntry(hash, master, 'github', { len: 24, counter: 3 }) };
+
+  const { payload }       = await buildExportPayload(db1, master);
+  const db2               = {};
+  const { imported, failed } = await applyImport(db2, payload, master);
+
+  assertEqual(imported, 1, 'should import 1 entry');
+  assertEqual(failed,   0, 'should have 0 failures');
+  assertEqual(db2[hash].len,     24);
+  assertEqual(db2[hash].counter,  3);
+});
+
+asyncTest('after import, re-export produces identical file', async () => {
+  const master = 'testmaster';
+  const hash   = await siteHash('github', master);
+  const db1    = { [hash]: await makeEntry(hash, master, 'github', { alias: 'work' }) };
+
+  const { payload: p1 } = await buildExportPayload(db1, master);
+
+  const db2 = {};
+  await applyImport(db2, p1, master);
+
+  const { payload: p2 } = await buildExportPayload(db2, master);
+
+  assertEqual(p1.kdf_salt,         p2.kdf_salt,         'kdf_salt should match after import');
+  assertEqual(p1.entries[hash].iv, p2.entries[hash].iv, 'iv should match after import');
+  assertEqual(p1.entries[hash].ct, p2.entries[hash].ct, 'ct should match after import');
+});
+
+asyncTest('import with wrong password: all entries fail gracefully', async () => {
+  const master = 'testmaster';
+  const hash   = await siteHash('github', master);
+  const db1    = { [hash]: await makeEntry(hash, master, 'github') };
+
+  const { payload }          = await buildExportPayload(db1, master);
+  const db2                  = {};
+  const { imported, failed } = await applyImport(db2, payload, 'wrongpassword');
+
+  assertEqual(imported, 0);
+  assertEqual(failed,   1);
+});
+
 // ── Known vector tests (loaded from vectors.json) ─────────────────────────
 
 describe('known vectors');

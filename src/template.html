@@ -685,7 +685,7 @@ function clearAll() {
 
 async function renderSites() {
   const master = document.getElementById('master').value;
-  const hashes = Object.keys(db);
+  const hashes = siteHashes(db);
 
   document.getElementById('site-count').textContent = hashes.length;
   const list = document.getElementById('site-list');
@@ -765,7 +765,7 @@ function deleteSite(hash) {
 }
 
 function clearAllSites() {
-  const count = Object.keys(db).length;
+  const count = siteHashes(db).length;
   if (count === 0) return;
   if (!confirm(`Delete all ${count} saved site${count === 1 ? '' : 's'} from this browser?\nThis cannot be undone.`)) return;
 
@@ -779,67 +779,23 @@ function clearAllSites() {
 }
 
 // ── Import / Export ────────────────────────────────────────────────────────
-//
-// Export file format (v3):
-//   {
-//     "vaultless": 3,
-//     "iter": <ITER_EXPORT>,
-//     "kdf_salt": "<base64>",          ← random salt for export key derivation
-//     "entries": {
-//       "<16-char-hash>": {
-//         "iv":  "<base64>",           ← random IV per entry
-//         "ct":  "<base64>"            ← AES-GCM ciphertext
-//       },
-//       ...
-//     }
-//   }
-//
-// Each entry decrypts to: { site, alias, len, counter, upper, lower, digits, symbols }
-//
-// One PBKDF2 call derives the export key; each entry then uses only AES-GCM.
-// This means: changing one site entry changes exactly one "ct" value in the file.
-//
-// Legacy v2 files (whole-DB in a single encrypted blob) are still importable.
+// Core logic lives in core.js (buildExportPayload / applyImport).
+// These functions handle only the UI: reading DOM inputs and triggering download/file-pick.
 
 async function exportData() {
   const master = document.getElementById('master').value;
   if (!master) { showMsg('export-msg', 'enter your master password on the generate tab first', 'err'); return; }
 
-  // Derive a single export key (one PBKDF2 call for the whole vault).
-  const kdfSalt   = crypto.getRandomValues(new Uint8Array(16));
-  const exportKey = await deriveExportKey(master, kdfSalt);
+  const { payload } = await buildExportPayload(db, master);
+  saveDB();
 
-  const entries = {};
-  let skipped   = 0;   // entries without encSite (shouldn't exist in a fresh vault)
-
-  for (const [hash, entry] of Object.entries(db)) {
-    let site  = '';
-    let alias = '';
-    try { site = await decrypt(entry.encSite, master); }
-    catch { skipped++; continue; }
-    try { if (entry.encAlias) alias = await decrypt(entry.encAlias, master); } catch {}
-
-    const payload = {
-      site, alias: alias || null,
-      len: entry.len, counter: entry.counter,
-      upper: entry.upper, lower: entry.lower, digits: entry.digits, symbols: entry.symbols,
-    };
-
-    const iv         = crypto.getRandomValues(new Uint8Array(12));
-    const ciphertext = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv }, exportKey, enc.encode(JSON.stringify(payload))
-    );
-    entries[hash] = { iv: toBase64(iv), ct: toBase64(new Uint8Array(ciphertext)) };
-  }
-
-  const output = { vaultless: 3, iter: ITER_EXPORT, kdf_salt: toBase64(kdfSalt), entries };
-  const blob   = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
-  const link   = document.createElement('a');
-  link.href    = URL.createObjectURL(blob);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href     = URL.createObjectURL(blob);
   link.download = 'vaultless-settings.json';
   link.click();
 
-  const total = Object.keys(entries).length;
+  const total = siteHashes(db).length;
   showMsg('export-msg', `exported ${total} site${total === 1 ? '' : 's'}`, 'ok');
 }
 
@@ -852,39 +808,11 @@ async function importData() {
 
   try {
     const raw = JSON.parse(await file.text());
+    if (raw.vaultless !== 3) { showMsg('import-msg', 'unrecognised file format', 'err'); return; }
 
-    if (raw.vaultless !== 3) {
-      showMsg('import-msg', 'unrecognised file format', 'err');
-      return;
-    }
-
-    const exportKey = await deriveExportKey(master, fromBase64(raw.kdf_salt));
-    let imported = 0, failed = 0;
-
-    for (const [hash, blob] of Object.entries(raw.entries)) {
-      try {
-        const plaintext = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: fromBase64(blob.iv) },
-          exportKey,
-          fromBase64(blob.ct)
-        );
-        const data = JSON.parse(new TextDecoder().decode(plaintext));
-
-        // Re-encrypt site name and alias for localStorage storage.
-        const encSite  = await encrypt(data.site, master);
-        const encAlias = data.alias ? await encrypt(data.alias, master) : null;
-
-        db[hash] = {
-          hash,
-          len: data.len, counter: data.counter,
-          upper: data.upper, lower: data.lower, digits: data.digits, symbols: data.symbols,
-          encSite, encAlias,
-        };
-        imported++;
-      } catch { failed++; }
-    }
-
+    const { imported, failed } = await applyImport(db, raw, master);
     saveDB();
+
     const note = failed ? `, ${failed} could not be decrypted` : '';
     showMsg('import-msg', `imported ${imported} site${imported === 1 ? '' : 's'}${note}`, imported > 0 ? 'ok' : 'err');
 

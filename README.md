@@ -35,6 +35,24 @@ All cryptography uses the browser's built-in [Web Crypto API](https://developer.
 
 The exported `.json` file is safe to store publicly (e.g. in a git repo or cloud drive). Each site entry is encrypted individually, so a diff of the file reveals only that a single entry changed — nothing else.
 
+## Design philosophy
+
+**Zero dependencies — minimal supply-chain surface.**
+The entire application is a single self-contained HTML file with no npm packages, no CDN links, and no runtime network requests. Every byte that executes in your browser ships directly from this repository. There is nothing in the dependency graph that a compromised package or CDN can inject.
+
+**Browser-native cryptography only.**
+All cryptographic operations use the browser's built-in [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) — the same API underlying TLS and browser key storage. It is independently audited, hardware-accelerated where available, and carries none of the supply-chain risk of a third-party crypto library.
+
+**On the algorithm choices.**
+The primitives used are the strongest options available within the Web Crypto API constraints:
+
+- **PBKDF2-SHA256** is the only password-based KDF the Web Crypto API exposes. Argon2id is the modern first choice for password hashing (it is memory-hard, making GPU/ASIC attacks significantly more expensive) but is not available in browsers without pulling in a WASM library — which would reintroduce supply-chain risk. At 1,000,000 iterations, the configuration exceeds OWASP's recommended minimum of 600,000 for PBKDF2-HMAC-SHA256.
+- **HMAC-SHA256** is a standard, NIST-approved keyed PRF with no known practical weaknesses.
+- **AES-GCM-256** is OWASP's first-preference authenticated encryption mode: it provides both confidentiality and ciphertext integrity. A fresh random 96-bit nonce is generated for every encryption call, satisfying the nonce-uniqueness requirement.
+
+**Stateless derivation over encrypted storage.**
+Passwords are never stored — not even in encrypted form. They are derived on demand from inputs you carry in your head. The only persistent state (optional, in `localStorage` or an export file) is per-site metadata: length, character classes, and version counter. This data is individually encrypted so a full storage leak reveals nothing — not even which services you use.
+
 ## Usage
 
 1. Enter your master password and a site name (`github`, `email`, …)

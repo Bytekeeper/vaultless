@@ -174,8 +174,8 @@ async function decrypt(payload, password) {
 // Derives a single AES-GCM key from the master password using PBKDF2.
 // Called once per export or import; each individual entry is then encrypted
 // with this key and a fresh random IV (no PBKDF2 per entry).
-// Using a random salt stored in the file means every export produces a
-// different key even with the same master password.
+// The salt is persisted in db._export so the same key is reused across exports,
+// making unchanged entries produce identical ciphertext (diff-stable vault).
 
 async function deriveExportKey(master, salt) {
   const keyMaterial = await crypto.subtle.importKey(
@@ -187,6 +187,118 @@ async function deriveExportKey(master, salt) {
     { name: 'AES-GCM', length: 256 },
     /* extractable */ false, ['encrypt', 'decrypt']
   );
+}
+
+// ── Export / import ───────────────────────────────────────────────────────
+//
+// Export file format (v3):
+//   {
+//     "vaultless": 3,
+//     "iter": <ITER_EXPORT>,
+//     "kdf_salt": "<base64>",          ← persisted salt for export key derivation
+//     "entries": {
+//       "<16-char-hash>": {
+//         "iv":  "<base64>",           ← per-entry IV, cached across exports
+//         "ct":  "<base64>"            ← AES-GCM ciphertext
+//       }, ...
+//     }
+//   }
+//
+// Each entry decrypts to: { site, alias, len, counter, upper, lower, digits, symbols }
+//
+// One PBKDF2 call derives the export key; each entry then uses only AES-GCM.
+// This means: changing one site entry changes exactly one "ct" value in the file.
+
+// Returns the keys of db that represent site entries (excludes _ prefixed metadata).
+function siteHashes(db) {
+  return Object.keys(db).filter(k => !k.startsWith('_'));
+}
+
+// Builds and returns the export payload object. Mutates db to persist the
+// export salt (db._export) and per-entry IV/CT cache (entry.exportIv/exportCt)
+// so subsequent exports produce identical ciphertext for unchanged entries.
+async function buildExportPayload(db, master) {
+  if (!db._export) db._export = { salt: Array.from(crypto.getRandomValues(new Uint8Array(16))) };
+  const kdfSalt   = new Uint8Array(db._export.salt);
+  const exportKey = await deriveExportKey(master, kdfSalt);
+
+  const entries = {};
+  let skipped   = 0;
+
+  for (const hash of siteHashes(db)) {
+    const entry = db[hash];
+
+    // Reuse cached ciphertext if the entry hasn't changed since last export.
+    if (entry.exportIv && entry.exportCt) {
+      entries[hash] = { iv: entry.exportIv, ct: entry.exportCt };
+      continue;
+    }
+
+    let site  = '';
+    let alias = '';
+    try { site = await decrypt(entry.encSite, master); }
+    catch { skipped++; continue; }
+    try { if (entry.encAlias) alias = await decrypt(entry.encAlias, master); } catch {}
+
+    const payload = {
+      site, alias: alias || null,
+      len: entry.len, counter: entry.counter,
+      upper: entry.upper, lower: entry.lower, digits: entry.digits, symbols: entry.symbols,
+    };
+
+    const iv         = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv }, exportKey, enc.encode(JSON.stringify(payload))
+    );
+    entry.exportIv = toBase64(iv);
+    entry.exportCt = toBase64(new Uint8Array(ciphertext));
+    entries[hash] = { iv: entry.exportIv, ct: entry.exportCt };
+  }
+
+  return {
+    payload: { vaultless: 3, iter: ITER_EXPORT, kdf_salt: toBase64(kdfSalt), entries },
+    skipped,
+  };
+}
+
+// Decrypts a v3 export payload and merges entries into db.
+// Also restores db._export and per-entry IV/CT cache so re-exporting from
+// this device produces the same file for unchanged entries.
+// Returns { imported, failed }.
+async function applyImport(db, raw, master) {
+  const exportKey = await deriveExportKey(master, fromBase64(raw.kdf_salt));
+  let imported = 0, failed = 0;
+
+  for (const [hash, blob] of Object.entries(raw.entries)) {
+    try {
+      const plaintext = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: fromBase64(blob.iv) },
+        exportKey,
+        fromBase64(blob.ct)
+      );
+      const data = JSON.parse(new TextDecoder().decode(plaintext));
+
+      const encSite  = await encrypt(data.site, master);
+      const encAlias = data.alias ? await encrypt(data.alias, master) : null;
+
+      db[hash] = {
+        hash,
+        len: data.len, counter: data.counter,
+        upper: data.upper, lower: data.lower, digits: data.digits, symbols: data.symbols,
+        encSite, encAlias,
+      };
+      imported++;
+    } catch { failed++; }
+  }
+
+  // Restore export salt and per-entry cache so re-exporting from this device
+  // produces the same ciphertext for unchanged entries.
+  db._export = { salt: Array.from(fromBase64(raw.kdf_salt)) };
+  for (const [hash, encEntry] of Object.entries(raw.entries)) {
+    if (db[hash]) { db[hash].exportIv = encEntry.iv; db[hash].exportCt = encEntry.ct; }
+  }
+
+  return { imported, failed };
 }
 
 // ── Master password strength scorer ───────────────────────────────────────
