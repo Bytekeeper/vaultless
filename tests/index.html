@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Vaultless — tests</title>
+<style>
+  body { font-family: ui-monospace, monospace; font-size: 13px; padding: 2rem; max-width: 800px; margin: 0 auto; background: #111; color: #ccc; }
+  h1   { font-size: 16px; color: #fff; margin-bottom: 1.5rem; }
+  h2   { font-size: 13px; color: #888; margin: 1.5rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .pass  { color: #7ec87e; }
+  .fail  { color: #e06c6c; }
+  .skip  { color: #888; }
+  .row   { margin: 3px 0; }
+  .label { color: #aaa; }
+  #summary { margin-top: 1.5rem; font-size: 14px; color: #fff; border-top: 1px solid #333; padding-top: 1rem; }
+  #summary.all-pass { color: #7ec87e; }
+  #summary.has-fail { color: #e06c6c; }
+  button { margin-top: 1.5rem; padding: 8px 16px; background: #222; border: 1px solid #444; color: #ccc; font-family: inherit; font-size: 13px; cursor: pointer; border-radius: 4px; }
+  button:hover { background: #2a2a2a; }
+  #vectors-note { margin-top: 0.5rem; font-size: 11px; color: #666; }
+</style>
+</head>
+<body>
+<h1>Vaultless — test suite</h1>
+<div id="output"></div>
+<div id="summary"></div>
+<button onclick="generateVectors()">Generate vectors</button>
+<div id="vectors-note">
+  Runs the crypto functions with fixed inputs and offers vectors.json for download.
+  Commit the downloaded file to lock the reference values for cross-implementation testing.
+  <br><br>
+  Note: derivePassword uses 1,000,000 PBKDF2 iterations — expect ~1–2s per vector.
+</div>
+
+<script src="../src/core.js"></script>
+<script>
+'use strict';
+
+// ── Minimal test harness ───────────────────────────────────────────────────
+
+const results = [];   // { name, status: 'pass'|'fail'|'skip', detail }
+let   section = '';
+
+function describe(name) {
+  section = name;
+}
+
+function assert(condition, detail = '') {
+  if (!condition) throw new Error(detail || 'assertion failed');
+}
+
+function assertEqual(actual, expected, label = '') {
+  if (actual !== expected)
+    throw new Error(`${label}\n  expected: ${JSON.stringify(expected)}\n  actual:   ${JSON.stringify(actual)}`);
+}
+
+// Registers and immediately runs a synchronous test.
+function test(name, fn) {
+  try {
+    fn();
+    results.push({ section, name, status: 'pass' });
+  } catch (e) {
+    results.push({ section, name, status: 'fail', detail: e.message });
+  }
+}
+
+// Registers an async test; returns a Promise.
+// All async tests are collected and awaited together via runAsync().
+const asyncTests = [];
+function asyncTest(name, fn) {
+  asyncTests.push({ section, name, fn });
+}
+
+async function runAsync() {
+  for (const { section: s, name, fn } of asyncTests) {
+    try {
+      await fn();
+      results.push({ section: s, name, status: 'pass' });
+    } catch (e) {
+      results.push({ section: s, name, status: 'fail', detail: e.message });
+    }
+  }
+}
+
+// ── Render results ─────────────────────────────────────────────────────────
+
+function render() {
+  const out = document.getElementById('output');
+  const sum = document.getElementById('summary');
+
+  let html        = '';
+  let lastSection = null;
+  let pass = 0, fail = 0, skip = 0;
+
+  for (const r of results) {
+    if (r.section !== lastSection) {
+      html += `<h2>${r.section}</h2>`;
+      lastSection = r.section;
+    }
+    const icon   = r.status === 'pass' ? '✓' : r.status === 'fail' ? '✗' : '–';
+    const cls    = r.status;
+    const detail = r.detail ? `<br><span style="color:#888;padding-left:1.5rem">${r.detail.replace(/\n/g, '<br>').replace(/  /g, '&nbsp;&nbsp;')}</span>` : '';
+    html += `<div class="row"><span class="${cls}">${icon}</span> <span class="label">${r.name}</span>${detail}</div>`;
+    if (r.status === 'pass') pass++;
+    else if (r.status === 'fail') fail++;
+    else skip++;
+  }
+
+  out.innerHTML = html;
+  sum.textContent = `${pass} passed, ${fail} failed, ${skip} skipped`;
+  sum.className   = fail > 0 ? 'has-fail' : 'all-pass';
+}
+
+// ── Pure function tests (synchronous) ─────────────────────────────────────
+
+describe('escHtml');
+
+test('escapes ampersand', () => {
+  assertEqual(escHtml('a&b'), 'a&amp;b');
+});
+test('escapes less-than', () => {
+  assertEqual(escHtml('<tag>'), '&lt;tag&gt;');
+});
+test('escapes double quote', () => {
+  assertEqual(escHtml('"hi"'), '&quot;hi&quot;');
+});
+test('escapes single quote', () => {
+  assertEqual(escHtml("it's"), 'it&#x27;s');
+});
+test('escapes all five chars together', () => {
+  // Split string literals that would otherwise contain </scr+ipt> verbatim —
+  // the HTML parser closes the script block on that token regardless of JS context.
+  const input    = '<scr' + 'ipt>"&\'<\/scr' + 'ipt>';
+  const expected = '&lt;scr' + 'ipt&gt;&quot;&amp;&#x27;&lt;\/scr' + 'ipt&gt;';
+  assertEqual(escHtml(input), expected);
+});
+test('leaves safe strings unchanged', () => {
+  assertEqual(escHtml('hello world 123'), 'hello world 123');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('scorePassword');
+
+test('empty string → score 0, empty label', () => {
+  const r = scorePassword('');
+  assertEqual(r.score, 0);
+  assertEqual(r.label, '');
+});
+test('common password → very weak + warning', () => {
+  const r = scorePassword('password');
+  assertEqual(r.score, 0);
+  assertEqual(r.label, 'very weak');
+  assert(r.warning.length > 0, 'should have a warning');
+});
+test('keyboard walk → weak', () => {
+  const r = scorePassword('qwerty123');
+  assertEqual(r.score, 1);
+  assertEqual(r.label, 'weak');
+});
+test('repeated chars → weak', () => {
+  const r = scorePassword('aaaa1234');
+  assertEqual(r.score, 1);
+});
+test('short simple string → very weak', () => {
+  const r = scorePassword('abc');
+  assertEqual(r.score, 0);
+});
+test('long mixed string → strong or very strong', () => {
+  const r = scorePassword('xK9#mP2!vQ7@nL4$');
+  assert(r.score >= 3, `expected score >= 3, got ${r.score}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('toBase64 / fromBase64');
+
+test('round-trips arbitrary bytes', () => {
+  const bytes    = new Uint8Array([0, 1, 127, 128, 255, 42, 99]);
+  const restored = fromBase64(toBase64(bytes));
+  assertEqual(restored.length, bytes.length, 'length');
+  for (let i = 0; i < bytes.length; i++)
+    assertEqual(restored[i], bytes[i], `byte[${i}]`);
+});
+test('empty array', () => {
+  const restored = fromBase64(toBase64(new Uint8Array(0)));
+  assertEqual(restored.length, 0);
+});
+
+// ── Async crypto tests ─────────────────────────────────────────────────────
+
+describe('siteHash');
+
+asyncTest('returns 16-char hex string', async () => {
+  const h = await siteHash('github', 'masterpassword');
+  assertEqual(h.length, 16, 'length');
+  assert(/^[0-9a-f]{16}$/.test(h), `not hex: ${h}`);
+});
+asyncTest('is deterministic', async () => {
+  const h1 = await siteHash('github', 'masterpassword');
+  const h2 = await siteHash('github', 'masterpassword');
+  assertEqual(h1, h2);
+});
+asyncTest('different sites → different hashes', async () => {
+  const h1 = await siteHash('github', 'masterpassword');
+  const h2 = await siteHash('gitlab', 'masterpassword');
+  assert(h1 !== h2, `collision: ${h1}`);
+});
+asyncTest('different masters → different hashes', async () => {
+  const h1 = await siteHash('github', 'masterpassword1');
+  const h2 = await siteHash('github', 'masterpassword2');
+  assert(h1 !== h2, `collision: ${h1}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('encrypt / decrypt');
+
+asyncTest('round-trip string', async () => {
+  const payload   = await encrypt('hello world', 'testpassword');
+  const plaintext = await decrypt(payload, 'testpassword');
+  assertEqual(plaintext, 'hello world');
+});
+asyncTest('round-trip object', async () => {
+  const original  = { a: 1, b: 'two', c: [3, 4] };
+  const payload   = await encrypt(original, 'testpassword');
+  const restored  = await decrypt(payload, 'testpassword');
+  assertEqual(JSON.stringify(restored), JSON.stringify(original));
+});
+asyncTest('wrong password throws', async () => {
+  const payload = await encrypt('secret', 'correctpassword');
+  try {
+    await decrypt(payload, 'wrongpassword');
+    assert(false, 'should have thrown');
+  } catch { /* expected */ }
+});
+asyncTest('each encrypt produces a different ciphertext', async () => {
+  const p1 = await encrypt('same', 'samepassword');
+  const p2 = await encrypt('same', 'samepassword');
+  // IVs must differ (fresh random each call)
+  assert(
+    JSON.stringify(p1.iv) !== JSON.stringify(p2.iv),
+    'IVs should differ between calls'
+  );
+});
+asyncTest('iter is stored in payload', async () => {
+  const payload = await encrypt('x', 'pw', 50_000);
+  assertEqual(payload.iter, 50_000);
+});
+asyncTest('iter is respected on decrypt', async () => {
+  const payload = await encrypt('roundtrip', 'pw', 50_000);
+  const result  = await decrypt(payload, 'pw');
+  assertEqual(result, 'roundtrip');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('derivePassword');
+
+asyncTest('returns string of requested length', async () => {
+  const pw = await derivePassword('master', 'github', '', 1, 20, true, true, true, true);
+  assertEqual(pw.length, 20, `got length ${pw.length}`);
+});
+asyncTest('is deterministic', async () => {
+  const pw1 = await derivePassword('master', 'github', '', 1, 20, true, true, true, false);
+  const pw2 = await derivePassword('master', 'github', '', 1, 20, true, true, true, false);
+  assertEqual(pw1, pw2);
+});
+asyncTest('different versions → different passwords', async () => {
+  const pw1 = await derivePassword('master', 'github', '', 1, 20, true, true, true, true);
+  const pw2 = await derivePassword('master', 'github', '', 2, 20, true, true, true, true);
+  assert(pw1 !== pw2, 'version should change the password');
+});
+asyncTest('different masters → different passwords', async () => {
+  const pw1 = await derivePassword('master1', 'github', '', 1, 20, true, true, true, true);
+  const pw2 = await derivePassword('master2', 'github', '', 1, 20, true, true, true, true);
+  assert(pw1 !== pw2);
+});
+asyncTest('username is normalised (case-insensitive)', async () => {
+  const pw1 = await derivePassword('master', 'github', 'User@Example.com', 1, 20, true, true, true, true);
+  const pw2 = await derivePassword('master', 'github', 'user@example.com', 1, 20, true, true, true, true);
+  assertEqual(pw1, pw2, 'username should be normalised to lowercase');
+});
+asyncTest('contains at least one uppercase when upper=true', async () => {
+  const pw = await derivePassword('master', 'github', '', 1, 20, true, false, false, false);
+  assert(/[A-Z]/.test(pw), `no uppercase in: ${pw}`);
+});
+asyncTest('contains at least one digit when digits=true', async () => {
+  const pw = await derivePassword('master', 'github', '', 1, 20, false, false, true, false);
+  assert(/[0-9]/.test(pw), `no digit in: ${pw}`);
+});
+asyncTest('contains only lowercase when lower-only', async () => {
+  const pw = await derivePassword('master', 'github', '', 1, 20, false, true, false, false);
+  assert(/^[a-z]+$/.test(pw), `unexpected chars in: ${pw}`);
+});
+
+// ── Known vector tests (loaded from vectors.json) ─────────────────────────
+
+describe('known vectors');
+
+asyncTest('siteHash vectors', async () => {
+  const vectors = await loadVectors();
+  if (vectors.siteHash.length === 0) {
+    results.push({ section: 'known vectors', name: 'siteHash vectors (skipped — no vectors.json)', status: 'skip' });
+    return;
+  }
+  for (const v of vectors.siteHash) {
+    const result = await siteHash(v.site, v.master);
+    assertEqual(result, v.expected, `siteHash("${v.site}", "...")`);
+  }
+});
+
+asyncTest('derivePassword vectors', async () => {
+  const vectors = await loadVectors();
+  if (vectors.derivePassword.length === 0) {
+    results.push({ section: 'known vectors', name: 'derivePassword vectors (skipped — no vectors.json)', status: 'skip' });
+    return;
+  }
+  for (const v of vectors.derivePassword) {
+    const result = await derivePassword(
+      v.master, v.site, v.username, v.version,
+      v.len, v.upper, v.lower, v.digits, v.symbols
+    );
+    assertEqual(result, v.expected, `derivePassword("${v.site}", ...)`);
+  }
+});
+
+async function loadVectors() {
+  try {
+    const resp = await fetch('vectors.json');
+    if (!resp.ok) return { siteHash: [], derivePassword: [] };
+    return await resp.json();
+  } catch {
+    return { siteHash: [], derivePassword: [] };
+  }
+}
+
+// ── Run everything ─────────────────────────────────────────────────────────
+
+(async () => {
+  await runAsync();
+  render();
+})();
+
+// ── Vector generation ──────────────────────────────────────────────────────
+// Derives reference values with fixed inputs and offers vectors.json for
+// download.  Run once, commit the file, and every future implementation
+// must match.
+
+const VECTOR_INPUTS = {
+  siteHash: [
+    { site: 'github',   master: 'correcthorsebatterystaple' },
+    { site: 'email',    master: 'correcthorsebatterystaple' },
+    { site: 'github',   master: 'differentmaster' },
+  ],
+  derivePassword: [
+    { master: 'correcthorsebatterystaple', site: 'github',   username: '',               version: 1, len: 20, upper: true,  lower: true,  digits: true,  symbols: true  },
+    { master: 'correcthorsebatterystaple', site: 'github',   username: '',               version: 2, len: 20, upper: true,  lower: true,  digits: true,  symbols: true  },
+    { master: 'correcthorsebatterystaple', site: 'email',    username: 'user@example.com', version: 1, len: 32, upper: true,  lower: true,  digits: true,  symbols: true  },
+    { master: 'correcthorsebatterystaple', site: 'bank',     username: '',               version: 1, len: 16, upper: true,  lower: true,  digits: true,  symbols: false },
+    { master: 'correcthorsebatterystaple', site: 'bank',     username: '',               version: 1, len: 16, upper: false, lower: true,  digits: true,  symbols: false },
+  ],
+};
+
+async function generateVectors() {
+  const btn = document.querySelector('button');
+  btn.textContent = 'generating… (this may take 10–20s)';
+  btn.disabled    = true;
+
+  const output = { siteHash: [], derivePassword: [] };
+
+  for (const v of VECTOR_INPUTS.siteHash) {
+    output.siteHash.push({ ...v, expected: await siteHash(v.site, v.master) });
+  }
+
+  for (const v of VECTOR_INPUTS.derivePassword) {
+    output.derivePassword.push({
+      ...v,
+      expected: await derivePassword(
+        v.master, v.site, v.username, v.version,
+        v.len, v.upper, v.lower, v.digits, v.symbols
+      ),
+    });
+  }
+
+  // Note field is last so it doesn't clutter the top of the file when reading.
+  output._note = 'Generated by tests/index.html — commit this file to lock reference values for cross-implementation testing.';
+
+  const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href     = URL.createObjectURL(blob);
+  link.download = 'vectors.json';
+  link.click();
+
+  btn.textContent = 'Generate vectors';
+  btn.disabled    = false;
+}
+</script>
+</body>
+</html>

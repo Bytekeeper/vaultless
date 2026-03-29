@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vaultless — stateless password manager</title>
+<style>
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f4;
+  --bg-tertiary: #eeece8;
+  --bg-success: #eaf3de;
+  --bg-danger: #fcebeb;
+  --text-primary: #1a1a18;
+  --text-secondary: #5f5e5a;
+  --text-tertiary: #888780;
+  --text-success: #3b6d11;
+  --text-danger: #a32d2d;
+  --border-tertiary: rgba(26,26,24,0.15);
+  --border-secondary: rgba(26,26,24,0.3);
+  --border-primary: rgba(26,26,24,0.4);
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1e1e1c;
+    --bg-secondary: #2a2a28;
+    --bg-tertiary: #333330;
+    --bg-success: #173404;
+    --bg-danger: #501313;
+    --text-primary: #f0ede8;
+    --text-secondary: #b4b2a9;
+    --text-tertiary: #888780;
+    --text-success: #c0dd97;
+    --text-danger: #f09595;
+    --border-tertiary: rgba(240,237,232,0.12);
+    --border-secondary: rgba(240,237,232,0.25);
+    --border-primary: rgba(240,237,232,0.38);
+  }
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding: 2rem 1rem 3rem;
+}
+.app { max-width: 560px; margin: 0 auto; }
+.card {
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border-tertiary);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  margin-top: 14px;
+}
+label:first-child { margin-top: 0; }
+input[type=text], input[type=password], input[type=number], input[type=email] {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 0.5px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+  font-family: var(--font-sans);
+  appearance: none;
+}
+input:focus { border-color: var(--border-primary); }
+input[type=number] { -moz-appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button { display: none; }
+.row { display: flex; gap: 10px; align-items: flex-end; }
+.row > * { flex: 1; }
+.row label { margin-top: 0; }
+.btn {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--border-secondary);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  transition: background 0.1s;
+}
+.btn:hover { background: var(--bg-secondary); }
+.btn-primary { background: var(--text-primary); color: var(--bg-primary); border-color: var(--text-primary); }
+.btn-primary:hover { opacity: 0.85; background: var(--text-primary); }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-danger { border-color: var(--text-danger); color: var(--text-danger); }
+.btn-danger:hover { background: var(--bg-danger); }
+.btn-icon {
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--border-tertiary);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  line-height: 1;
+}
+.btn-icon:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.checkbox-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.checkbox-row input[type=checkbox] { width: auto; accent-color: var(--text-primary); }
+.checkbox-row label { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.result-box {
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  word-break: break-all;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+}
+.result-text { flex: 1; letter-spacing: 0.05em; }
+.result-masked { flex: 1; letter-spacing: 0.15em; font-size: 20px; color: var(--text-tertiary); }
+.section-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-bottom: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.site-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border-tertiary);
+  flex-wrap: wrap;
+}
+.site-row:last-child { border-bottom: none; padding-bottom: 0; }
+.badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border-tertiary);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.msg { font-size: 13px; padding: 8px 12px; border-radius: var(--radius-md); margin-top: 10px; }
+.msg-ok { background: var(--bg-success); color: var(--text-success); }
+.msg-err { background: var(--bg-danger); color: var(--text-danger); }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.tab {
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  border: 0.5px solid transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  background: transparent;
+  font-family: var(--font-sans);
+}
+.tab.active { border-color: var(--border-secondary); color: var(--text-primary); background: var(--bg-secondary); }
+.hidden { display: none; }
+.strength-bar { height: 3px; border-radius: 2px; margin-top: 8px; transition: width 0.3s, background 0.3s; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 10px; }
+.wordmark { font-size: 18px; font-weight: 500; color: var(--text-primary); }
+.wordmark-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+.input-hint { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+.site-row-wrap { display: flex; gap: 8px; align-items: flex-end; }
+.site-row-wrap input { flex: 1; min-width: 0; }
+.site-row-wrap select {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 0.5px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+  font-family: var(--font-sans);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.site-row-wrap select:focus { border-color: var(--border-primary); }
+.site-row-wrap select:disabled { color: var(--text-tertiary); cursor: default; }
+.actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.actions .btn { flex: 1; }
+.site-info { flex: 1; min-width: 100px; }
+.site-alias { font-size: 14px; color: var(--text-primary); }
+.site-hash-disp { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); margin-top: 2px; }
+details.about > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 1.25rem;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+details.about > summary::-webkit-details-marker { display: none; }
+details.about > summary::after { content: '▸'; font-size: 10px; }
+details[open].about > summary::after { content: '▾'; }
+details.about > summary:hover { color: var(--text-primary); }
+details.about .about-body { padding: 0 1.25rem 1.25rem; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <div class="wordmark">Vaultless</div>
+      <div class="wordmark-sub">stateless password manager</div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('generate')">generate</button>
+      <button class="tab" onclick="showTab('sites')">sites</button>
+      <button class="tab" onclick="showTab('io')">import / export</button>
+    </div>
+  </div>
+
+  <!-- GENERATE TAB -->
+  <div id="tab-generate">
+    <div class="card">
+      <div class="section-title">master password</div>
+      <input type="password" id="master" placeholder="your secret master password"
+             autocomplete="off" oninput="onMasterInput()"/>
+      <div id="strength-bar" class="strength-bar" style="width:0"></div>
+      <div id="strength-label" style="font-size:11px;color:var(--text-tertiary);margin-top:4px;min-height:14px"></div>
+
+      <label>site / use-case</label>
+      <div class="site-row-wrap">
+        <input type="text" id="site" placeholder="github, email, bank…"
+               oninput="sanitizeSite(this); onSiteInput()" autocomplete="off" spellcheck="false"/>
+        <select id="site-select" disabled onchange="onSiteSelectChange()">
+          <option value="">saved ▾</option>
+        </select>
+      </div>
+      <div class="input-hint">lowercase, no spaces — case-insensitive by design</div>
+
+      <label>username / email <span style="font-weight:400;color:var(--text-tertiary)">(optional — adds extra uniqueness)</span></label>
+      <input type="text" id="username" placeholder="you@example.com or your username"
+             autocomplete="off" spellcheck="false"/>
+    </div>
+
+    <div class="card">
+      <div class="section-title">options</div>
+      <div class="row">
+        <div>
+          <label>length</label>
+          <input type="number" id="len" value="20" min="8" max="64"/>
+        </div>
+        <div>
+          <label>version <span style="font-weight:400;color:var(--text-tertiary)">(increment to change password)</span></label>
+          <input type="number" id="version" value="1" min="1" max="99"/>
+        </div>
+      </div>
+      <div class="checkbox-row"><input type="checkbox" id="upper" checked><label for="upper">uppercase (A–Z)</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="lower" checked><label for="lower">lowercase (a–z)</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="digits" checked><label for="digits">digits (0–9)</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="symbols" checked><label for="symbols">symbols (!@#…)</label></div>
+
+      <div style="border-top:0.5px solid var(--border-tertiary);margin-top:14px;padding-top:12px">
+        <div class="checkbox-row">
+          <input type="checkbox" id="autosave" checked onchange="updateGenerateBtn()">
+          <label for="autosave">remember options for this site</label>
+        </div>
+        <label style="margin-top:10px">alias <span style="font-weight:400;color:var(--text-tertiary)">(optional — shown in saved list only, never used for derivation)</span></label>
+        <input type="text" id="alias" placeholder="e.g. work email, streaming, bank…" autocomplete="off"/>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="generate-btn" onclick="generate()">generate + save</button>
+      <button class="btn" onclick="clearAll()">clear</button>
+    </div>
+
+    <div id="result-area" class="hidden">
+      <div class="result-box">
+        <span id="pw-masked" class="result-masked"></span>
+        <span id="pw-out" class="result-text hidden"></span>
+        <button class="btn-icon" id="reveal-btn" onclick="toggleReveal()" title="reveal">👁</button>
+        <button class="btn-icon" onclick="copyPw()" title="copy">⎘</button>
+      </div>
+      <div id="copy-msg"></div>
+    </div>
+
+    <details class="card about" style="padding:0;margin-top:0">
+      <summary>about vaultless</summary>
+      <div class="about-body">
+        Vaultless never stores passwords. Each password is derived on-the-fly from your
+        <strong>master password + site + username</strong> using PBKDF2-SHA256 (1 million iterations).
+        The same inputs always produce the same output.<br><br>
+        Site names are normalised (lowercase, no spaces) before hashing — capitalisation
+        and spacing are always ignored.<br><br>
+        The settings file is safe to store publicly (like a KeePass file). Each site entry
+        is encrypted individually with AES-GCM-256 using a key derived from your master
+        password (1.5 million PBKDF2 iterations). Site names and aliases are never stored
+        in plaintext — not in the browser nor in the export file.<br><br>
+        Inspired by <a href="https://lesspass.com" style="color:var(--text-primary)">LessPass</a>.
+      </div>
+    </details>
+  </div>
+
+  <!-- SITES TAB -->
+  <div id="tab-sites" class="hidden">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="section-title" style="margin-bottom:0">saved sites <span class="badge" id="site-count">0</span></div>
+        <button class="btn btn-sm btn-danger" onclick="clearAllSites()">clear all</button>
+      </div>
+      <div id="site-list"><span style="font-size:13px;color:var(--text-tertiary)">no sites saved yet.</span></div>
+    </div>
+    <div id="delete-msg"></div>
+  </div>
+
+  <!-- IMPORT / EXPORT TAB -->
+  <div id="tab-io" class="hidden">
+    <div class="card">
+      <div class="section-title">export</div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">
+        Uses the master password from the generate tab. Each site is encrypted individually —
+        the file is safe to store publicly and diffs cleanly when a single entry changes.
+      </p>
+      <button class="btn" style="width:100%" onclick="exportData()">download vaultless-settings.json</button>
+      <div id="export-msg"></div>
+    </div>
+    <div class="card">
+      <div class="section-title">import</div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">
+        Uses the master password from the generate tab. Merges with existing saved sites.
+      </p>
+      <label>settings file</label>
+      <input type="file" id="import-file" accept=".json" style="font-size:13px;color:var(--text-secondary)"/>
+      <button class="btn" style="margin-top:10px;width:100%" onclick="importData()">import</button>
+      <div id="import-msg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+// PBKDF2 iteration counts by purpose.
+//
+//   ITER_DERIVE   — used once per password generation; the primary security function.
+//   ITER_INTERNAL — used per entry when saving to localStorage; runs multiple times per
+//                   save, but the master password is the real secret so 100k is fine here.
+//   ITER_EXPORT   — used once per export/import to derive a session key; can be high
+//                   because it's a single call regardless of vault size.
+const ITER_DERIVE   = 1_000_000;
+const ITER_INTERNAL =   100_000;
+const ITER_EXPORT   = 1_500_000;
+
+// Named character sets used in both password derivation and guaranteed-char logic.
+const CHARS_UPPER   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const CHARS_LOWER   = 'abcdefghijklmnopqrstuvwxyz';
+const CHARS_DIGITS  = '0123456789';
+const CHARS_SYMBOLS = '!@#$%^&*()-_=+[]{}|;:,.<>?';
+
+// ── Text encoder singleton ─────────────────────────────────────────────────
+
+const enc = new TextEncoder();
+
+// ── String utilities ───────────────────────────────────────────────────────
+
+// Escapes user-supplied text before inserting into innerHTML to prevent XSS.
+function escHtml(str) {
+  return str
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;')
+    .replace(/'/g,  '&#x27;');
+}
+
+// ── Base64 helpers ─────────────────────────────────────────────────────────
+// Used in the export file to keep binary blobs human-readable and compact.
+
+function toBase64(bytes) {
+  // Spread into String.fromCharCode in chunks to avoid call-stack limits on
+  // large arrays (the default spread can hit the argument limit).
+  const CHUNK = 0x8000;
+  let binary  = '';
+  for (let i = 0; i < bytes.length; i += CHUNK)
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  return btoa(binary);
+}
+
+function fromBase64(str) {
+  return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+
+// ── Crypto: site hash ──────────────────────────────────────────────────────
+// HMAC-SHA256 keyed on the full master password.
+// Using HMAC (rather than a plain hash) means an attacker cannot enumerate
+// which services someone uses without knowing the full master password.
+
+async function siteHash(site, master) {
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(master),
+    { name: 'HMAC', hash: 'SHA-256' },
+    /* extractable */ false, ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, enc.encode('vaultless:site:' + site));
+  const hex = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  return hex.slice(0, 16);
+}
+
+// ── Crypto: password derivation ────────────────────────────────────────────
+// Derives a deterministic password from master + site + username + version.
+// The same inputs always produce the same output — nothing is stored.
+//
+// How it works:
+//   1. PBKDF2-SHA256 (ITER_DERIVE iterations) turns the master password into
+//      512 bits of cryptographic material.  The salt encodes site, username
+//      and version so every credential is unique even with the same master.
+//   2. We walk through the derived bytes with a sequential cursor to pick
+//      characters and to drive the Fisher-Yates shuffle.  Sequential access
+//      avoids index-aliasing that strided access (i*3+7) can cause.
+
+async function derivePassword(master, site, username, version, len, upper, lower, digits, symbols) {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(master), 'PBKDF2', /* extractable */ false, ['deriveBits']
+  );
+
+  // Username is normalised so "You@Example.com" and "you@example.com" are identical.
+  const saltStr = `vaultless:${site}:${username.trim().toLowerCase()}:${version}`;
+
+  const rawBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(saltStr), iterations: ITER_DERIVE },
+    keyMaterial, 512
+  );
+  const bytes = new Uint8Array(rawBits);   // 64 bytes to draw from
+
+  // Build the full character pool from whichever classes are enabled.
+  let pool = '';
+  if (upper)   pool += CHARS_UPPER;
+  if (lower)   pool += CHARS_LOWER;
+  if (digits)  pool += CHARS_DIGITS;
+  if (symbols) pool += CHARS_SYMBOLS;
+  if (!pool)   pool  = CHARS_UPPER + CHARS_LOWER + CHARS_DIGITS;   // safe fallback
+
+  let cursor = 0;   // advances sequentially through `bytes`
+
+  // Pick one guaranteed character per enabled class so the password satisfies
+  // common composition requirements (e.g. "must contain a digit").
+  let guaranteed = '';
+  if (upper)   guaranteed += CHARS_UPPER  [bytes[cursor++] % CHARS_UPPER.length];
+  if (lower)   guaranteed += CHARS_LOWER  [bytes[cursor++] % CHARS_LOWER.length];
+  if (digits)  guaranteed += CHARS_DIGITS [bytes[cursor++] % CHARS_DIGITS.length];
+  if (symbols) guaranteed += CHARS_SYMBOLS[bytes[cursor++] % CHARS_SYMBOLS.length];
+
+  // Fill the remaining slots from the full pool.
+  let body = '';
+  for (let i = 0; i < len - guaranteed.length; i++) {
+    body += pool[bytes[cursor % bytes.length] % pool.length];
+    cursor++;
+  }
+
+  // Shuffle guaranteed + body together with Fisher-Yates so the guaranteed
+  // characters don't predictably cluster at the front of the password.
+  const chars = (guaranteed + body).split('');
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = bytes[cursor % bytes.length] % (i + 1);
+    cursor++;
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.slice(0, len).join('');
+}
+
+// ── Crypto: AES-GCM encrypt / decrypt ─────────────────────────────────────
+// Used for alias and site-name storage in localStorage, and for export files.
+// Each encrypt() call generates a fresh random salt and IV.
+// The iteration count is written into the payload so decrypt() never needs
+// to guess it — safe even if the default changes in a future version.
+
+async function deriveAesKey(password, salt, iterations) {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(password), 'PBKDF2', /* extractable */ false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    /* extractable */ false, ['encrypt', 'decrypt']
+  );
+}
+
+async function encrypt(data, password, iterations = ITER_INTERNAL) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveAesKey(password, salt, iterations);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data))
+  );
+  return { v: 2, iter: iterations, salt: [...salt], iv: [...iv], ct: [...new Uint8Array(ciphertext)] };
+}
+
+async function decrypt(payload, password) {
+  const iterations = payload.iter ?? ITER_INTERNAL;
+  const key = await deriveAesKey(password, new Uint8Array(payload.salt), iterations);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: new Uint8Array(payload.iv) }, key, new Uint8Array(payload.ct)
+  );
+  return JSON.parse(new TextDecoder().decode(plaintext));
+}
+
+// ── Crypto: export session key ─────────────────────────────────────────────
+// Derives a single AES-GCM key from the master password using PBKDF2.
+// Called once per export or import; each individual entry is then encrypted
+// with this key and a fresh random IV (no PBKDF2 per entry).
+// Using a random salt stored in the file means every export produces a
+// different key even with the same master password.
+
+async function deriveExportKey(master, salt) {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(master), 'PBKDF2', /* extractable */ false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: ITER_EXPORT, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    /* extractable */ false, ['encrypt', 'decrypt']
+  );
+}
+
+// ── Master password strength scorer ───────────────────────────────────────
+// Returns { score: 0-4, label: string, warning: string }.
+// Pure function — no DOM access.
+
+const COMMON_PASSWORDS = [
+  'password', '123456', 'qwerty', 'abc123', 'letmein', 'monkey', 'iloveyou',
+  'admin', 'welcome', 'login', 'master', 'secret', 'passw0rd', 'password1',
+  '111111', 'sunshine', 'princess', 'dragon', 'shadow', 'mustang', 'football', 'baseball',
+];
+const KEYBOARD_WALKS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', '1234567890', 'qwerty', 'asdf', 'zxcv'];
+
+function scorePassword(value) {
+  if (!value) return { score: 0, label: '', warning: '' };
+
+  const lower = value.toLowerCase();
+
+  if (COMMON_PASSWORDS.includes(lower))
+    return { score: 0, label: 'very weak', warning: 'extremely common password' };
+
+  for (const walk of KEYBOARD_WALKS)
+    if (lower.includes(walk.slice(0, 5)))
+      return { score: 1, label: 'weak', warning: 'keyboard pattern detected' };
+
+  if (/(.)\1{3,}/.test(value))
+    return { score: 1, label: 'weak', warning: 'too many repeated characters' };
+
+  if (/^(.{1,4})\1+$/.test(value))
+    return { score: 1, label: 'weak', warning: 'repeated pattern detected' };
+
+  // Estimate entropy from the character space actually used.
+  let charsetSize = 0;
+  if (/[a-z]/.test(value))        charsetSize += 26;
+  if (/[A-Z]/.test(value))        charsetSize += 26;
+  if (/[0-9]/.test(value))        charsetSize += 10;
+  if (/[^a-zA-Z0-9]/.test(value)) charsetSize += 32;
+  const entropyBits = value.length * Math.log2(charsetSize || 1);
+
+  let score, label, warning = '';
+  if      (entropyBits < 28) { score = 0; label = 'very weak';  warning = 'too short or too simple'; }
+  else if (entropyBits < 40) { score = 1; label = 'weak'; }
+  else if (entropyBits < 55) { score = 2; label = 'fair'; }
+  else if (entropyBits < 70) { score = 3; label = 'strong'; }
+  else                       { score = 4; label = 'very strong'; }
+
+  if (score >= 2 && !/[^a-zA-Z0-9]/.test(value))
+    warning = 'add symbols to strengthen';
+  else if (score >= 1 && !/[A-Z]/.test(value) && !/[^a-zA-Z0-9]/.test(value))
+    warning = 'add uppercase or symbols';
+
+  return { score, label, warning };
+}
+</script>
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+
+const DB_KEY   = 'vaultless_v2';
+let db         = {};     // site entries keyed by 16-char hex site hash
+let currentPw  = '';     // most recently derived password; cleared on clearAll()
+let pwRevealed = false;
+
+// ── Database helpers ───────────────────────────────────────────────────────
+
+function loadDB() {
+  try { db = JSON.parse(localStorage.getItem(DB_KEY) || '{}'); }
+  catch { db = {}; }
+}
+
+function saveDB() {
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+}
+
+loadDB();
+
+// ── Generate button label ──────────────────────────────────────────────────
+// Reflects whether the current action will also save the entry.
+
+function updateGenerateBtn() {
+  const saving = document.getElementById('autosave').checked;
+  document.getElementById('generate-btn').textContent = saving ? 'generate + save' : 'generate';
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+
+function showTab(name) {
+  const ALL_TABS = ['generate', 'sites', 'io'];
+  ALL_TABS.forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+  });
+  document.querySelectorAll('.tab').forEach((btn, i) => {
+    btn.classList.toggle('active', ALL_TABS[i] === name);
+  });
+  if (name === 'sites') renderSites();
+}
+
+// ── DOM utilities ──────────────────────────────────────────────────────────
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="msg msg-${type}">${escHtml(text)}</div>`;
+}
+
+// Strips spaces and forces lowercase in the site field as the user types.
+function sanitizeSite(input) {
+  const cursorPos = input.selectionStart;
+  const raw       = input.value;
+  const clean     = raw.toLowerCase().replace(/\s/g, '');
+  if (raw !== clean) {
+    input.value = clean;
+    // Adjust cursor position to account for removed characters.
+    const adjusted = Math.max(0, cursorPos - (raw.length - clean.length));
+    input.setSelectionRange(adjusted, adjusted);
+  }
+}
+
+// ── Strength bar (DOM) ─────────────────────────────────────────────────────
+
+function updateStrengthBar() {
+  const value = document.getElementById('master').value;
+  const bar   = document.getElementById('strength-bar');
+  const label = document.getElementById('strength-label');
+
+  if (!value) { bar.style.width = '0'; label.textContent = ''; return; }
+
+  const { score, label: text, warning } = scorePassword(value);
+  const widths = [5, 25, 50, 75, 100];
+  const colors = ['#e24b4a', '#e24b4a', '#ef9f27', '#639922', '#1d9e75'];
+  bar.style.width      = widths[score] + '%';
+  bar.style.background = colors[score];
+  label.textContent    = text + (warning ? ' — ' + warning : '');
+}
+
+// ── Silent auto-load ───────────────────────────────────────────────────────
+// When the user types a site name that matches a saved entry, silently load
+// its saved options (length, version, character classes, alias).
+// When the site is new (unsaved), reset length and version to sensible defaults.
+
+let autoLoadTimer = null;
+
+async function autoLoadOptions() {
+  const master = document.getElementById('master').value;
+  const site   = document.getElementById('site').value;
+  if (!master || !site) return;
+
+  const hash     = await siteHash(site, master);
+  const saved    = db[hash];
+  const lastHash = document.getElementById('site').dataset.lastLoaded;
+
+  // Nothing changed — avoid redundant work.
+  if (hash === lastHash) return;
+
+  document.getElementById('site').dataset.lastLoaded = hash;
+
+  if (saved) {
+    await loadOptionsFromEntry(saved, master);
+  } else {
+    // New (unsaved) site — reset to defaults so old settings don't bleed over.
+    document.getElementById('len').value     = 20;
+    document.getElementById('version').value = 1;
+  }
+}
+
+// ── Site select dropdown ───────────────────────────────────────────────────
+// Decrypts every saved site name and populates the <select> beside the site
+// input.  Runs whenever the master password changes (debounced).
+// Entries without an encrypted site name (saved before this feature) are skipped.
+
+async function updateSiteDropdown() {
+  const master = document.getElementById('master').value;
+  const select = document.getElementById('site-select');
+
+  // Reset to the single placeholder option.
+  select.innerHTML = '<option value="">saved ▾</option>';
+  select.disabled  = true;
+
+  if (!master) return;
+
+  const options = [];
+  for (const entry of Object.values(db)) {
+    if (!entry.encSite) continue;   // pre-existing entry without stored site name
+
+    let siteName = '';
+    let alias    = '';
+    try { siteName = await decrypt(entry.encSite,  master); } catch { continue; }
+    try { if (entry.encAlias) alias = await decrypt(entry.encAlias, master); } catch {}
+
+    options.push({ siteName, label: alias || siteName, hash: entry.hash });
+  }
+
+  if (options.length === 0) return;
+
+  select.disabled = false;
+  for (const { siteName, label, hash } of options) {
+    const opt        = document.createElement('option');
+    opt.value        = hash;       // hash lets us look up the full entry instantly
+    opt.dataset.site = siteName;   // site name to fill into the text input
+    opt.textContent  = label;
+    select.appendChild(opt);
+  }
+}
+
+// Called when the user picks an entry from the select.
+// Fills the site text input, loads the saved options, then resets the select.
+async function onSiteSelectChange() {
+  const select = document.getElementById('site-select');
+  const hash   = select.value;
+  if (!hash) return;
+
+  const selectedOption = select.options[select.selectedIndex];
+  const siteName       = selectedOption.dataset.site;
+  const entry          = db[hash];
+
+  // Fill the site input and mark it as already-loaded so autoLoadOptions
+  // doesn't fire a redundant decrypt immediately after.
+  const siteInput              = document.getElementById('site');
+  siteInput.value              = siteName;
+  siteInput.dataset.lastLoaded = hash;
+  sanitizeSite(siteInput);
+
+  const master = document.getElementById('master').value;
+  if (entry) await loadOptionsFromEntry(entry, master);
+
+  // Reset the select back to the placeholder so it acts as a picker
+  // rather than a persistent state indicator.
+  select.value = '';
+}
+
+// ── Input event handlers ───────────────────────────────────────────────────
+
+function onMasterInput() {
+  updateStrengthBar();
+  clearTimeout(autoLoadTimer);
+  autoLoadTimer = setTimeout(() => {
+    autoLoadOptions();
+    updateSiteDropdown();
+  }, 300);
+}
+
+function onSiteInput() {
+  // Clear the "already loaded" flag so options reload when the user navigates
+  // away and comes back to a previously-saved site name.
+  document.getElementById('site').dataset.lastLoaded = '';
+  clearTimeout(autoLoadTimer);
+  autoLoadTimer = setTimeout(autoLoadOptions, 300);
+}
+
+// ── Load saved options for a site ──────────────────────────────────────────
+
+async function loadOptionsFromEntry(entry, master) {
+  document.getElementById('len').value       = entry.len;
+  document.getElementById('version').value   = entry.counter;
+  document.getElementById('upper').checked   = entry.upper;
+  document.getElementById('lower').checked   = entry.lower;
+  document.getElementById('digits').checked  = entry.digits;
+  document.getElementById('symbols').checked = entry.symbols;
+
+  if (master && entry.encAlias) {
+    try { document.getElementById('alias').value = await decrypt(entry.encAlias, master); }
+    catch { /* wrong master or entry corrupted — leave field empty */ }
+  }
+}
+
+// ── Generate ───────────────────────────────────────────────────────────────
+
+async function generate() {
+  const master   = document.getElementById('master').value;
+  const site     = document.getElementById('site').value;
+  const username = document.getElementById('username').value;
+
+  if (!master) { showMsg('copy-msg', 'enter your master password', 'err'); return; }
+  if (!site)   { showMsg('copy-msg', 'enter a site or use-case',   'err'); return; }
+
+  const len     = parseInt(document.getElementById('len').value)     || 20;
+  const version = parseInt(document.getElementById('version').value) || 1;
+  const upper   = document.getElementById('upper').checked;
+  const lower   = document.getElementById('lower').checked;
+  const digits  = document.getElementById('digits').checked;
+  const symbols = document.getElementById('symbols').checked;
+
+  currentPw = await derivePassword(master, site, username, version, len, upper, lower, digits, symbols);
+
+  // Display the result masked by default.
+  pwRevealed = false;
+  document.getElementById('pw-out').textContent = currentPw;
+  document.getElementById('pw-out').classList.add('hidden');
+  document.getElementById('pw-masked').textContent = '•'.repeat(currentPw.length);
+  document.getElementById('pw-masked').classList.remove('hidden');
+  document.getElementById('reveal-btn').textContent = '👁';
+  document.getElementById('result-area').classList.remove('hidden');
+  document.getElementById('copy-msg').innerHTML = '';
+
+  if (document.getElementById('autosave').checked) {
+    const hash  = await siteHash(site, master);
+    const alias = document.getElementById('alias').value.trim();
+
+    // Encrypt both the site name and the alias so localStorage stores no plaintext.
+    const encSite  = await encrypt(site, master);
+    const encAlias = alias ? await encrypt(alias, master) : null;
+
+    // Store `version` as `counter` for compatibility with the export format.
+    db[hash] = { hash, len, counter: version, upper, lower, digits, symbols, encSite, encAlias };
+    saveDB();
+    updateSiteDropdown();
+  }
+}
+
+// ── Reveal / copy ──────────────────────────────────────────────────────────
+
+function toggleReveal() {
+  pwRevealed = !pwRevealed;
+  document.getElementById('pw-out').classList.toggle('hidden', !pwRevealed);
+  document.getElementById('pw-masked').classList.toggle('hidden', pwRevealed);
+  document.getElementById('reveal-btn').textContent = pwRevealed ? '🙈' : '👁';
+}
+
+async function copyPw() {
+  if (!currentPw) return;
+
+  await navigator.clipboard.writeText(currentPw);
+  showMsg('copy-msg', 'copied — clipboard clears in 30s', 'ok');
+
+  // After 30 seconds, overwrite the clipboard — but only if our password is
+  // still there (the user may have copied something else in the meantime).
+  const snapshot = currentPw;
+  setTimeout(async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (clipboardText === snapshot) await navigator.clipboard.writeText('');
+    } catch { /* clipboard read permission denied — skip silently */ }
+    const el = document.getElementById('copy-msg');
+    if (el) el.innerHTML = '';
+  }, 30_000);
+}
+
+// ── Clear all ──────────────────────────────────────────────────────────────
+
+function clearAll() {
+  ['master', 'site', 'username', 'alias'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('site').dataset.lastLoaded = '';
+
+  const select     = document.getElementById('site-select');
+  select.innerHTML = '<option value="">saved ▾</option>';
+  select.disabled  = true;
+
+  currentPw  = '';
+  pwRevealed = false;
+
+  document.getElementById('pw-out').textContent         = '';
+  document.getElementById('pw-masked').textContent      = '';
+  document.getElementById('result-area').classList.add('hidden');
+  document.getElementById('copy-msg').innerHTML         = '';
+  document.getElementById('strength-bar').style.width   = '0';
+  document.getElementById('strength-label').textContent = '';
+}
+
+// ── Sites tab ──────────────────────────────────────────────────────────────
+// Uses the master password from the generate tab — no separate unlock needed.
+// If master is present, aliases and site names are decrypted on the fly.
+// If master is absent, only hashes are shown.
+
+async function renderSites() {
+  const master = document.getElementById('master').value;
+  const hashes = Object.keys(db);
+
+  document.getElementById('site-count').textContent = hashes.length;
+  const list = document.getElementById('site-list');
+
+  if (!hashes.length) {
+    list.innerHTML = '<span style="font-size:13px;color:var(--text-tertiary)">no sites saved yet.</span>';
+    return;
+  }
+
+  if (!master) {
+    list.innerHTML = hashes.map(h => {
+      const entry = db[h];
+      return `<div class="site-row">
+        <div class="site-info">
+          <div class="site-alias" style="color:var(--text-tertiary)">enter master on generate tab to reveal</div>
+          <div class="site-hash-disp">${h}</div>
+        </div>
+        <span class="badge">len ${entry.len}</span>
+        <span class="badge">v${entry.counter}</span>
+        <span class="badge">${buildFlags(entry)}</span>
+        <button class="btn btn-sm btn-danger" onclick="deleteSite('${h}')">delete</button>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // Decrypt all entries in parallel for speed, then render.
+  const rows = await Promise.all(hashes.map(async h => {
+    const entry = db[h];
+
+    let alias    = '';
+    let siteName = '';
+    try { if (entry.encAlias) alias    = await decrypt(entry.encAlias, master); } catch {}
+    try { if (entry.encSite)  siteName = await decrypt(entry.encSite,  master); } catch {}
+
+    // Primary label: alias if set, otherwise site name, otherwise nothing.
+    const label = alias || siteName;
+
+    // When we have both alias and site name, show the site name on the second line
+    // alongside the hash for easy identification.
+    const subline = (alias && siteName) ? `${escHtml(siteName)} · ${h}` : h;
+
+    return `<div class="site-row">
+      <div class="site-info">
+        <div class="site-alias">${label
+          ? escHtml(label)
+          : '<span style="color:var(--text-tertiary);font-style:italic">no alias</span>'}</div>
+        <div class="site-hash-disp">${subline}</div>
+      </div>
+      <span class="badge">len ${entry.len}</span>
+      <span class="badge">v${entry.counter}</span>
+      <span class="badge">${buildFlags(entry)}</span>
+      <button class="btn btn-sm btn-danger" onclick="deleteSite('${h}')">delete</button>
+    </div>`;
+  }));
+
+  list.innerHTML = rows.join('');
+}
+
+// Returns a compact character-class summary string like "Aa1#".
+function buildFlags(entry) {
+  return [
+    entry.upper   ? 'A' : '',
+    entry.lower   ? 'a' : '',
+    entry.digits  ? '1' : '',
+    entry.symbols ? '#' : '',
+  ].join('');
+}
+
+function deleteSite(hash) {
+  delete db[hash];
+  saveDB();
+  renderSites();
+  updateSiteDropdown();
+  showMsg('delete-msg', 'site removed', 'ok');
+  setTimeout(() => { document.getElementById('delete-msg').innerHTML = ''; }, 2000);
+}
+
+function clearAllSites() {
+  const count = Object.keys(db).length;
+  if (count === 0) return;
+  if (!confirm(`Delete all ${count} saved site${count === 1 ? '' : 's'} from this browser?\nThis cannot be undone.`)) return;
+
+  db = {};
+  saveDB();
+  document.getElementById('site').dataset.lastLoaded = '';
+  renderSites();
+  updateSiteDropdown();
+  showMsg('delete-msg', 'all sites cleared', 'ok');
+  setTimeout(() => { document.getElementById('delete-msg').innerHTML = ''; }, 2000);
+}
+
+// ── Import / Export ────────────────────────────────────────────────────────
+//
+// Export file format (v3):
+//   {
+//     "vaultless": 3,
+//     "iter": <ITER_EXPORT>,
+//     "kdf_salt": "<base64>",          ← random salt for export key derivation
+//     "entries": {
+//       "<16-char-hash>": {
+//         "iv":  "<base64>",           ← random IV per entry
+//         "ct":  "<base64>"            ← AES-GCM ciphertext
+//       },
+//       ...
+//     }
+//   }
+//
+// Each entry decrypts to: { site, alias, len, counter, upper, lower, digits, symbols }
+//
+// One PBKDF2 call derives the export key; each entry then uses only AES-GCM.
+// This means: changing one site entry changes exactly one "ct" value in the file.
+//
+// Legacy v2 files (whole-DB in a single encrypted blob) are still importable.
+
+async function exportData() {
+  const master = document.getElementById('master').value;
+  if (!master) { showMsg('export-msg', 'enter your master password on the generate tab first', 'err'); return; }
+
+  // Derive a single export key (one PBKDF2 call for the whole vault).
+  const kdfSalt   = crypto.getRandomValues(new Uint8Array(16));
+  const exportKey = await deriveExportKey(master, kdfSalt);
+
+  const entries = {};
+  let skipped   = 0;   // entries without encSite (shouldn't exist in a fresh vault)
+
+  for (const [hash, entry] of Object.entries(db)) {
+    let site  = '';
+    let alias = '';
+    try { site = await decrypt(entry.encSite, master); }
+    catch { skipped++; continue; }
+    try { if (entry.encAlias) alias = await decrypt(entry.encAlias, master); } catch {}
+
+    const payload = {
+      site, alias: alias || null,
+      len: entry.len, counter: entry.counter,
+      upper: entry.upper, lower: entry.lower, digits: entry.digits, symbols: entry.symbols,
+    };
+
+    const iv         = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv }, exportKey, enc.encode(JSON.stringify(payload))
+    );
+    entries[hash] = { iv: toBase64(iv), ct: toBase64(new Uint8Array(ciphertext)) };
+  }
+
+  const output = { vaultless: 3, iter: ITER_EXPORT, kdf_salt: toBase64(kdfSalt), entries };
+  const blob   = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
+  const link   = document.createElement('a');
+  link.href    = URL.createObjectURL(blob);
+  link.download = 'vaultless-settings.json';
+  link.click();
+
+  const total = Object.keys(entries).length;
+  showMsg('export-msg', `exported ${total} site${total === 1 ? '' : 's'}`, 'ok');
+}
+
+async function importData() {
+  const master = document.getElementById('master').value;
+  const file   = document.getElementById('import-file').files[0];
+
+  if (!master) { showMsg('import-msg', 'enter your master password on the generate tab first', 'err'); return; }
+  if (!file)   { showMsg('import-msg', 'select a settings file', 'err'); return; }
+
+  try {
+    const raw = JSON.parse(await file.text());
+
+    if (raw.vaultless !== 3) {
+      showMsg('import-msg', 'unrecognised file format', 'err');
+      return;
+    }
+
+    const exportKey = await deriveExportKey(master, fromBase64(raw.kdf_salt));
+    let imported = 0, failed = 0;
+
+    for (const [hash, blob] of Object.entries(raw.entries)) {
+      try {
+        const plaintext = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: fromBase64(blob.iv) },
+          exportKey,
+          fromBase64(blob.ct)
+        );
+        const data = JSON.parse(new TextDecoder().decode(plaintext));
+
+        // Re-encrypt site name and alias for localStorage storage.
+        const encSite  = await encrypt(data.site, master);
+        const encAlias = data.alias ? await encrypt(data.alias, master) : null;
+
+        db[hash] = {
+          hash,
+          len: data.len, counter: data.counter,
+          upper: data.upper, lower: data.lower, digits: data.digits, symbols: data.symbols,
+          encSite, encAlias,
+        };
+        imported++;
+      } catch { failed++; }
+    }
+
+    saveDB();
+    const note = failed ? `, ${failed} could not be decrypted` : '';
+    showMsg('import-msg', `imported ${imported} site${imported === 1 ? '' : 's'}${note}`, imported > 0 ? 'ok' : 'err');
+
+  } catch {
+    showMsg('import-msg', 'wrong password or invalid file', 'err');
+  }
+}
+</script>
+</body>
+</html>
