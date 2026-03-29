@@ -4,7 +4,9 @@
 
 A stateless, single-file password manager. No vault, no server, no installation.
 
-Open `vaultless.html` in any modern browser and start generating passwords. Nothing is sent anywhere.
+**[Try it live →](https://bytekeeper.github.io/vaultless/)**
+
+Or download `vaultless.html` and open it in any modern browser. Nothing is sent anywhere.
 
 ## How it works
 
