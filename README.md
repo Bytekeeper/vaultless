@@ -60,4 +60,15 @@ Passwords are never stored — not even in encrypted form. They are derived on d
 3. Hit **generate + save**
 4. To get a new password for a site (breach, forced rotation): increment the **version** number
 
-Inspired by [LessPass](https://lesspass.com).
+Inspired by [LessPass](https://lesspass.com). Vaultless builds on the same stateless derivation idea with a few deliberate improvements:
+
+| | LessPass | Vaultless |
+|---|---|---|
+| PBKDF2 iterations | 100,000 | 1,000,000 |
+| Site names in storage | Plaintext | HMAC-SHA256 keyed on master password — an attacker with your storage cannot enumerate which services you use |
+| Stored metadata | Plaintext (server DB) or unencrypted CSV export | AES-GCM-256 encrypted per entry in both localStorage and export file |
+| Export file | Unencrypted CSV | Encrypted JSON, safe to store publicly |
+| Salt construction | Raw string concatenation of `site + login + counter` | Domain-separated: `vaultless:site:username:version` — eliminates ambiguous splits |
+| Server component | Optional sync database (decommissioned Nov 2024) | None — no server, no account |
+
+**A quick note though:** LessPass is battle-tested — but *this* project is not and should be used with care.
