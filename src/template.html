@@ -284,7 +284,7 @@ details.about .about-body { padding: 0 1.25rem 1.25rem; font-size: 13px; color: 
 
       <div style="border-top:0.5px solid var(--border-tertiary);margin-top:14px;padding-top:12px">
         <div class="checkbox-row">
-          <input type="checkbox" id="autosave" checked onchange="updateGenerateBtn()">
+          <input type="checkbox" id="autosave" checked onchange="updateButtons()">
           <label for="autosave">remember options for this site</label>
         </div>
         <label style="margin-top:10px">alias <span style="font-weight:400;color:var(--text-tertiary)">(optional — shown in saved list only, never used for derivation)</span></label>
@@ -390,18 +390,12 @@ loadDB();
 // ── Generate button label ──────────────────────────────────────────────────
 // Reflects whether the current action will also save the entry.
 
-function updateGenerateBtn() {
-  const saving  = document.getElementById('autosave').checked;
-  const btn     = document.getElementById('generate-btn');
-  btn.textContent = saving ? 'generate + save' : 'generate';
+function updateButtons() {
   const master  = document.getElementById('master').value;
   const site    = document.getElementById('site').value;
-  btn.disabled  = !master || !site;
-}
-
-function updateClearBtn() {
-  const master = document.getElementById('master').value;
-  const site   = document.getElementById('site').value;
+  const saving  = document.getElementById('autosave').checked;
+  document.getElementById('generate-btn').textContent = saving ? 'generate + save' : 'generate';
+  document.getElementById('generate-btn').disabled = !master || !site;
   document.getElementById('clear-btn').disabled = !currentPw && !master && !site;
 }
 
@@ -554,8 +548,7 @@ async function onSiteSelectChange() {
 
 function onMasterInput() {
   updateStrengthBar();
-  updateGenerateBtn();
-  updateClearBtn();
+  updateButtons();
   clearTimeout(autoLoadTimer);
   autoLoadTimer = setTimeout(() => {
     autoLoadOptions();
@@ -567,8 +560,7 @@ function onSiteInput() {
   // Clear the "already loaded" flag so options reload when the user navigates
   // away and comes back to a previously-saved site name.
   document.getElementById('site').dataset.lastLoaded = '';
-  updateGenerateBtn();
-  updateClearBtn();
+  updateButtons();
   clearTimeout(autoLoadTimer);
   autoLoadTimer = setTimeout(autoLoadOptions, 300);
 }
@@ -617,7 +609,7 @@ async function generate() {
   document.getElementById('reveal-btn').textContent = '👁';
   document.getElementById('result-area').classList.remove('hidden');
   document.getElementById('copy-msg').innerHTML = '';
-  updateClearBtn();
+  updateButtons();
 
   if (document.getElementById('autosave').checked) {
     const hash  = await siteHash(site, master);
@@ -683,8 +675,7 @@ function clearAll() {
   document.getElementById('copy-msg').innerHTML         = '';
   document.getElementById('strength-bar').style.width   = '0';
   document.getElementById('strength-label').textContent = '';
-  updateGenerateBtn();
-  updateClearBtn();
+  updateButtons();
 }
 
 // ── Sites tab ──────────────────────────────────────────────────────────────
