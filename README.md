@@ -4,7 +4,7 @@
 
 A stateless, single-file password manager. No vault, no server, no installation.
 
-**[Try it live →](https://bytekeeper.github.io/vaultless/)**
+**[Try it live →](https://www.bytekeeper.org/vaultless/)**
 
 Or download `vaultless.html` and open it in any modern browser. Nothing is sent anywhere.
 
