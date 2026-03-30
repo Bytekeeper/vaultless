@@ -234,16 +234,22 @@ async function buildExportPayload(db, master) {
       continue;
     }
 
-    let site  = '';
-    let alias = '';
+    let site     = '';
+    let alias    = '';
+    let username = '';
+    // Fall back to legacy plaintext fields for entries saved before encryption was added.
+    let cfg      = { len: entry.len, counter: entry.counter,
+                     upper: entry.upper, lower: entry.lower, digits: entry.digits, symbols: entry.symbols };
     try { site = await decrypt(entry.encSite, master); }
     catch { skipped++; continue; }
-    try { if (entry.encAlias) alias = await decrypt(entry.encAlias, master); } catch {}
+    try { if (entry.encAlias)  alias    = await decrypt(entry.encAlias,  master); } catch {}
+    try { if (entry.encUser)   username = await decrypt(entry.encUser,   master); } catch {}
+    try { if (entry.encConfig) cfg      = await decrypt(entry.encConfig, master); } catch {}
 
     const payload = {
-      site, alias: alias || null,
-      len: entry.len, counter: entry.counter,
-      upper: entry.upper, lower: entry.lower, digits: entry.digits, symbols: entry.symbols,
+      site, alias: alias || null, username: username || null,
+      len: cfg.len, counter: cfg.counter,
+      upper: cfg.upper, lower: cfg.lower, digits: cfg.digits, symbols: cfg.symbols,
     };
 
     const iv         = crypto.getRandomValues(new Uint8Array(12));
@@ -278,15 +284,16 @@ async function applyImport(db, raw, master) {
       );
       const data = JSON.parse(new TextDecoder().decode(plaintext));
 
-      const encSite  = await encrypt(data.site, master);
-      const encAlias = data.alias ? await encrypt(data.alias, master) : null;
+      const encSite   = await encrypt(data.site, master);
+      const encAlias  = data.alias    ? await encrypt(data.alias,    master) : null;
+      const encUser   = data.username ? await encrypt(data.username, master) : null;
+      const encConfig = await encrypt(
+        { len: data.len, counter: data.counter,
+          upper: data.upper, lower: data.lower, digits: data.digits, symbols: data.symbols },
+        master
+      );
 
-      db[hash] = {
-        hash,
-        len: data.len, counter: data.counter,
-        upper: data.upper, lower: data.lower, digits: data.digits, symbols: data.symbols,
-        encSite, encAlias,
-      };
+      db[hash] = { hash, encConfig, encSite, encAlias, encUser };
       imported++;
     } catch { failed++; }
   }

@@ -372,8 +372,9 @@ asyncTest('import round-trip: exported then re-imported entries are correct', as
 
   assertEqual(imported, 1, 'should import 1 entry');
   assertEqual(failed,   0, 'should have 0 failures');
-  assertEqual(db2[hash].len,     24);
-  assertEqual(db2[hash].counter,  3);
+  const cfg = await decrypt(db2[hash].encConfig, master);
+  assertEqual(cfg.len,     24);
+  assertEqual(cfg.counter,  3);
 });
 
 asyncTest('after import, re-export produces identical file', async () => {

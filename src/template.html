@@ -232,7 +232,7 @@ details.about .about-body { padding: 0 1.25rem 1.25rem; font-size: 13px; color: 
   <div class="header">
     <div>
       <div class="wordmark">Vaultless</div>
-      <div class="wordmark-sub">stateless password manager</div>
+      <div class="wordmark-sub">stateless password manager <span style="color:var(--text-tertiary)">· v1.0</span></div>
     </div>
     <div class="tabs">
       <button class="tab active" onclick="showTab('generate')">generate</button>
@@ -262,7 +262,7 @@ details.about .about-body { padding: 0 1.25rem 1.25rem; font-size: 13px; color: 
 
       <label>username / email <span style="font-weight:400;color:var(--text-tertiary)">(optional — adds extra uniqueness)</span></label>
       <input type="text" id="username" placeholder="you@example.com or your username"
-             autocomplete="off" spellcheck="false"/>
+             autocomplete="off" spellcheck="false" oninput="onUsernameInput()"/>
     </div>
 
     <div class="card">
@@ -457,12 +457,15 @@ function updateStrengthBar() {
 let autoLoadTimer = null;
 
 async function autoLoadOptions() {
-  const master = document.getElementById('master').value;
-  const site   = document.getElementById('site').value;
+  const master   = document.getElementById('master').value;
+  const site     = document.getElementById('site').value;
   if (!master || !site) return;
 
-  const hash     = await siteHash(site, master);
-  const saved    = db[hash];
+  const username  = document.getElementById('username').value;
+  const userKey   = username.trim().toLowerCase();
+  const hashInput = userKey ? site + ':' + userKey : site;
+  const hash      = await siteHash(hashInput, master);
+  const saved     = db[hash];
   const lastHash = document.getElementById('site').dataset.lastLoaded;
 
   // Nothing changed — avoid redundant work.
@@ -500,20 +503,24 @@ async function updateSiteDropdown() {
 
     let siteName = '';
     let alias    = '';
+    let username = '';
     try { siteName = await decrypt(entry.encSite,  master); } catch { continue; }
-    try { if (entry.encAlias) alias = await decrypt(entry.encAlias, master); } catch {}
+    try { if (entry.encAlias) alias    = await decrypt(entry.encAlias, master); } catch {}
+    try { if (entry.encUser)  username = await decrypt(entry.encUser,  master); } catch {}
 
-    options.push({ siteName, label: alias || siteName, hash: entry.hash });
+    const displayLabel = (alias || siteName) + (username ? ` (${username})` : '');
+    options.push({ siteName, displayLabel, hash: entry.hash, username });
   }
 
   if (options.length === 0) return;
 
   select.disabled = false;
-  for (const { siteName, label, hash } of options) {
-    const opt        = document.createElement('option');
-    opt.value        = hash;       // hash lets us look up the full entry instantly
-    opt.dataset.site = siteName;   // site name to fill into the text input
-    opt.textContent  = label;
+  for (const { siteName, displayLabel, hash, username } of options) {
+    const opt             = document.createElement('option');
+    opt.value             = hash;
+    opt.dataset.site      = siteName;
+    opt.dataset.username  = username;
+    opt.textContent       = displayLabel;
     select.appendChild(opt);
   }
 }
@@ -529,12 +536,13 @@ async function onSiteSelectChange() {
   const siteName       = selectedOption.dataset.site;
   const entry          = db[hash];
 
-  // Fill the site input and mark it as already-loaded so autoLoadOptions
+  // Fill the site and username inputs, mark as already-loaded so autoLoadOptions
   // doesn't fire a redundant decrypt immediately after.
   const siteInput              = document.getElementById('site');
   siteInput.value              = siteName;
   siteInput.dataset.lastLoaded = hash;
   sanitizeSite(siteInput);
+  document.getElementById('username').value = selectedOption.dataset.username || '';
 
   const master = document.getElementById('master').value;
   if (entry) await loadOptionsFromEntry(entry, master);
@@ -565,19 +573,38 @@ function onSiteInput() {
   autoLoadTimer = setTimeout(autoLoadOptions, 300);
 }
 
+function onUsernameInput() {
+  // Username is part of the hash key, so a change may match a different saved entry.
+  document.getElementById('site').dataset.lastLoaded = '';
+  clearTimeout(autoLoadTimer);
+  autoLoadTimer = setTimeout(autoLoadOptions, 300);
+}
+
 // ── Load saved options for a site ──────────────────────────────────────────
 
 async function loadOptionsFromEntry(entry, master) {
-  document.getElementById('len').value       = entry.len;
-  document.getElementById('version').value   = entry.counter;
-  document.getElementById('upper').checked   = entry.upper;
-  document.getElementById('lower').checked   = entry.lower;
-  document.getElementById('digits').checked  = entry.digits;
-  document.getElementById('symbols').checked = entry.symbols;
+  // Decrypt config; fall back to legacy plaintext fields for old entries.
+  let cfg = { len: entry.len, counter: entry.counter,
+              upper: entry.upper, lower: entry.lower, digits: entry.digits, symbols: entry.symbols };
+  if (master && entry.encConfig) {
+    try { cfg = await decrypt(entry.encConfig, master); }
+    catch { /* wrong master or corrupted — keep fallback */ }
+  }
+
+  document.getElementById('len').value       = cfg.len;
+  document.getElementById('version').value   = cfg.counter;
+  document.getElementById('upper').checked   = cfg.upper;
+  document.getElementById('lower').checked   = cfg.lower;
+  document.getElementById('digits').checked  = cfg.digits;
+  document.getElementById('symbols').checked = cfg.symbols;
 
   if (master && entry.encAlias) {
-    try { document.getElementById('alias').value = await decrypt(entry.encAlias, master); }
-    catch { /* wrong master or entry corrupted — leave field empty */ }
+    try { document.getElementById('alias').value    = await decrypt(entry.encAlias, master); }
+    catch {}
+  }
+  if (master && entry.encUser) {
+    try { document.getElementById('username').value = await decrypt(entry.encUser,  master); }
+    catch {}
   }
 }
 
@@ -612,15 +639,23 @@ async function generate() {
   updateButtons();
 
   if (document.getElementById('autosave').checked) {
-    const hash  = await siteHash(site, master);
-    const alias = document.getElementById('alias').value.trim();
+    const alias   = document.getElementById('alias').value.trim();
+    const userKey = username.trim().toLowerCase();
 
-    // Encrypt both the site name and the alias so localStorage stores no plaintext.
-    const encSite  = await encrypt(site, master);
-    const encAlias = alias ? await encrypt(alias, master) : null;
+    // Include username in the hash key so the same site with different users
+    // gets separate entries; fall back to site-only key when username is empty
+    // (preserves backward compatibility with existing entries).
+    const hashInput = userKey ? site + ':' + userKey : site;
+    const hash      = await siteHash(hashInput, master);
 
+    // Encrypt all fields so localStorage stores no plaintext.
+    const encSite   = await encrypt(site, master);
+    const encAlias  = alias   ? await encrypt(alias,   master) : null;
+    const encUser   = userKey ? await encrypt(userKey, master) : null;
     // Store `version` as `counter` for compatibility with the export format.
-    db[hash] = { hash, len, counter: version, upper, lower, digits, symbols, encSite, encAlias };
+    const encConfig = await encrypt({ len, counter: version, upper, lower, digits, symbols }, master);
+
+    db[hash] = { hash, encConfig, encSite, encAlias, encUser };
     saveDB();
     updateSiteDropdown();
   }
@@ -696,19 +731,13 @@ async function renderSites() {
   }
 
   if (!master) {
-    list.innerHTML = hashes.map(h => {
-      const entry = db[h];
-      return `<div class="site-row">
+    list.innerHTML = hashes.map(h => `<div class="site-row">
         <div class="site-info">
           <div class="site-alias" style="color:var(--text-tertiary)">enter master on generate tab to reveal</div>
           <div class="site-hash-disp">${h}</div>
         </div>
-        <span class="badge">len ${entry.len}</span>
-        <span class="badge">v${entry.counter}</span>
-        <span class="badge">${buildFlags(entry)}</span>
         <button class="btn btn-sm btn-danger" onclick="deleteSite('${h}')">delete</button>
-      </div>`;
-    }).join('');
+      </div>`).join('');
     return;
   }
 
@@ -718,15 +747,23 @@ async function renderSites() {
 
     let alias    = '';
     let siteName = '';
-    try { if (entry.encAlias) alias    = await decrypt(entry.encAlias, master); } catch {}
-    try { if (entry.encSite)  siteName = await decrypt(entry.encSite,  master); } catch {}
+    let username = '';
+    let cfg      = { len: entry.len, counter: entry.counter,
+                     upper: entry.upper, lower: entry.lower, digits: entry.digits, symbols: entry.symbols };
+    try { if (entry.encAlias)  alias    = await decrypt(entry.encAlias,  master); } catch {}
+    try { if (entry.encSite)   siteName = await decrypt(entry.encSite,   master); } catch {}
+    try { if (entry.encUser)   username = await decrypt(entry.encUser,   master); } catch {}
+    try { if (entry.encConfig) cfg      = await decrypt(entry.encConfig, master); } catch {}
 
     // Primary label: alias if set, otherwise site name, otherwise nothing.
     const label = alias || siteName;
 
-    // When we have both alias and site name, show the site name on the second line
-    // alongside the hash for easy identification.
-    const subline = (alias && siteName) ? `${escHtml(siteName)} · ${h}` : h;
+    // Second line: site name (if aliased), username, and hash.
+    const subparts = [];
+    if (alias && siteName) subparts.push(escHtml(siteName));
+    if (username) subparts.push(escHtml(username));
+    subparts.push(h);
+    const subline = subparts.join(' · ');
 
     return `<div class="site-row">
       <div class="site-info">
@@ -735,9 +772,9 @@ async function renderSites() {
           : '<span style="color:var(--text-tertiary);font-style:italic">no alias</span>'}</div>
         <div class="site-hash-disp">${subline}</div>
       </div>
-      <span class="badge">len ${entry.len}</span>
-      <span class="badge">v${entry.counter}</span>
-      <span class="badge">${buildFlags(entry)}</span>
+      <span class="badge">len ${cfg.len}</span>
+      <span class="badge">v${cfg.counter}</span>
+      <span class="badge">${buildFlags(cfg)}</span>
       <button class="btn btn-sm btn-danger" onclick="deleteSite('${h}')">delete</button>
     </div>`;
   }));
