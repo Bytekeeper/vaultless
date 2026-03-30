@@ -6,6 +6,8 @@ A stateless, single-file password manager. No vault, no server, no installation.
 
 **[Try it live →](https://www.bytekeeper.org/vaultless/)**
 
+![Vaultless UI](assets/screenshot.png)
+
 Or download `vaultless.html` and open it in any modern browser. Nothing is sent anywhere.
 
 ## How it works
@@ -18,7 +20,7 @@ PBKDF2-SHA256( master password, site + username + version, 1,000,000 iterations 
 
 The same inputs always produce the same output — so you never need to store the password itself. Lose your device, open the file on another machine, and all your passwords are reproducible from memory alone.
 
-**What *is* optionally stored** (in `localStorage`, encrypted): site names, aliases, and settings like length and character classes. Nothing in storage is plaintext.
+**What *is* optionally stored** (in `localStorage`, encrypted): site names, usernames, aliases, and per-site config (length, character classes, version). Every field is individually AES-GCM-256 encrypted — nothing in storage is plaintext.
 
 ## Security primitives
 
@@ -33,7 +35,7 @@ All cryptography uses the browser's built-in [Web Crypto API](https://developer.
 
 ## Export file
 
-The exported `.json` file is safe to store publicly (e.g. in a git repo or cloud drive). Each site entry is encrypted individually, so a diff of the file reveals only that a single entry changed — nothing else.
+The exported `.json` file is safe to store publicly (e.g. in a git repo or cloud drive). It contains **no plaintext whatsoever** — not site names, not usernames, not even metadata like password length or character classes. The only unencrypted fields are the PBKDF2 iteration count and a random KDF salt (both public by design). Each site entry is encrypted individually with AES-GCM-256, so a diff reveals only that a single entry changed — nothing about its contents.
 
 ## Design philosophy
 
@@ -51,7 +53,7 @@ The primitives used are the strongest options available within the Web Crypto AP
 - **AES-GCM-256** is OWASP's first-preference authenticated encryption mode: it provides both confidentiality and ciphertext integrity. A fresh random 96-bit nonce is generated for every encryption call, satisfying the nonce-uniqueness requirement.
 
 **Stateless derivation over encrypted storage.**
-Passwords are never stored — not even in encrypted form. They are derived on demand from inputs you carry in your head. The only persistent state (optional, in `localStorage` or an export file) is per-site metadata: length, character classes, and version counter. This data is individually encrypted so a full storage leak reveals nothing — not even which services you use.
+Passwords are never stored — not even in encrypted form. They are derived on demand from inputs you carry in your head. The only persistent state (optional, in `localStorage` or an export file) is per-site metadata: site name, username, alias, password length, character classes, and version counter. Every field is AES-GCM-256 encrypted, so a full storage or export-file leak reveals nothing — not even which services you use or how many characters your passwords have.
 
 ## Usage
 
@@ -66,7 +68,7 @@ Inspired by [LessPass](https://lesspass.com). Vaultless builds on the same state
 |---|---|---|
 | PBKDF2 iterations | 100,000 | 1,000,000 |
 | Site names in storage | Plaintext | HMAC-SHA256 keyed on master password — an attacker with your storage cannot enumerate which services you use |
-| Stored metadata | Plaintext (server DB) or unencrypted CSV export | AES-GCM-256 encrypted per entry in both localStorage and export file |
+| Stored metadata | Plaintext (server DB) or unencrypted CSV export | AES-GCM-256 encrypted per entry in both localStorage and export file — including config fields like length and character classes |
 | Export file | Unencrypted CSV | Encrypted JSON, safe to store publicly |
 | Salt construction | Raw string concatenation of `site + login + counter` | Domain-separated: `vaultless:site:username:version` — eliminates ambiguous splits |
 | Server component | Optional sync database (decommissioned Nov 2024) | None — no server, no account |

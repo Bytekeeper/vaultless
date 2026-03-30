@@ -1,4 +1,4 @@
-.PHONY: build hash serve test
+.PHONY: build hash serve test screenshot
 
 # Inline src/core.js into src/template.html → dist/vaultless.html
 build:
@@ -13,6 +13,10 @@ hash: build
 	@echo ""
 	@echo "Publish this hash alongside the file so users can verify integrity:"
 	@sha256sum dist/vaultless.html
+
+# Capture a screenshot of the built app → assets/screenshot.png
+screenshot: build
+	python3 tests/screenshot.py
 
 # Serve the project locally for development and testing.
 # Tests: http://localhost:8080/tests/
