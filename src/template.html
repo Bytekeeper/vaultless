@@ -374,6 +374,8 @@ let db         = {};     // site entries keyed by 16-char hex site hash
 let currentPw  = '';     // most recently derived password; cleared on clearAll()
 let pwRevealed = false;
 
+const $ = id => document.getElementById(id);
+
 // ── Database helpers ───────────────────────────────────────────────────────
 
 function loadDB() {
@@ -391,12 +393,12 @@ loadDB();
 // Reflects whether the current action will also save the entry.
 
 function updateButtons() {
-  const master  = document.getElementById('master').value;
-  const site    = document.getElementById('site').value;
-  const saving  = document.getElementById('autosave').checked;
-  document.getElementById('generate-btn').textContent = saving ? 'generate + save' : 'generate';
-  document.getElementById('generate-btn').disabled = !master || !site;
-  document.getElementById('clear-btn').disabled = !currentPw && !master && !site;
+  const master  = $('master').value;
+  const site    = $('site').value;
+  const saving  = $('autosave').checked;
+  $('generate-btn').textContent = saving ? 'generate + save' : 'generate';
+  $('generate-btn').disabled = !master || !site;
+  $('clear-btn').disabled = !currentPw && !master && !site;
 }
 
 // ── Tab switching ──────────────────────────────────────────────────────────
@@ -404,7 +406,7 @@ function updateButtons() {
 function showTab(name) {
   const ALL_TABS = ['generate', 'sites', 'io'];
   ALL_TABS.forEach(t => {
-    document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+    $('tab-' + t).classList.toggle('hidden', t !== name);
   });
   document.querySelectorAll('.tab').forEach((btn, i) => {
     btn.classList.toggle('active', ALL_TABS[i] === name);
@@ -415,7 +417,7 @@ function showTab(name) {
 // ── DOM utilities ──────────────────────────────────────────────────────────
 
 function showMsg(id, text, type) {
-  const el = document.getElementById(id);
+  const el = $(id);
   if (el) el.innerHTML = `<div class="msg msg-${type}">${escHtml(text)}</div>`;
 }
 
@@ -435,9 +437,9 @@ function sanitizeSite(input) {
 // ── Strength bar (DOM) ─────────────────────────────────────────────────────
 
 function updateStrengthBar() {
-  const value = document.getElementById('master').value;
-  const bar   = document.getElementById('strength-bar');
-  const label = document.getElementById('strength-label');
+  const value = $('master').value;
+  const bar   = $('strength-bar');
+  const label = $('strength-label');
 
   if (!value) { bar.style.width = '0'; label.textContent = ''; return; }
 
@@ -457,28 +459,28 @@ function updateStrengthBar() {
 let autoLoadTimer = null;
 
 async function autoLoadOptions() {
-  const master   = document.getElementById('master').value;
-  const site     = document.getElementById('site').value;
+  const master   = $('master').value;
+  const site     = $('site').value;
   if (!master || !site) return;
 
-  const username  = document.getElementById('username').value;
+  const username  = $('username').value;
   const userKey   = username.trim().toLowerCase();
   const hashInput = userKey ? site + ':' + userKey : site;
   const hash      = await siteHash(hashInput, master);
   const saved     = db[hash];
-  const lastHash = document.getElementById('site').dataset.lastLoaded;
+  const lastHash = $('site').dataset.lastLoaded;
 
   // Nothing changed — avoid redundant work.
   if (hash === lastHash) return;
 
-  document.getElementById('site').dataset.lastLoaded = hash;
+  $('site').dataset.lastLoaded = hash;
 
   if (saved) {
     await loadOptionsFromEntry(saved, master);
   } else {
     // New (unsaved) site — reset to defaults so old settings don't bleed over.
-    document.getElementById('len').value     = 20;
-    document.getElementById('version').value = 1;
+    $('len').value     = 20;
+    $('version').value = 1;
   }
 }
 
@@ -488,8 +490,8 @@ async function autoLoadOptions() {
 // Entries without an encrypted site name (saved before this feature) are skipped.
 
 async function updateSiteDropdown() {
-  const master = document.getElementById('master').value;
-  const select = document.getElementById('site-select');
+  const master = $('master').value;
+  const select = $('site-select');
 
   // Reset to the single placeholder option.
   select.innerHTML = '<option value="">saved ▾</option>';
@@ -528,7 +530,7 @@ async function updateSiteDropdown() {
 // Called when the user picks an entry from the select.
 // Fills the site text input, loads the saved options, then resets the select.
 async function onSiteSelectChange() {
-  const select = document.getElementById('site-select');
+  const select = $('site-select');
   const hash   = select.value;
   if (!hash) return;
 
@@ -538,13 +540,13 @@ async function onSiteSelectChange() {
 
   // Fill the site and username inputs, mark as already-loaded so autoLoadOptions
   // doesn't fire a redundant decrypt immediately after.
-  const siteInput              = document.getElementById('site');
+  const siteInput              = $('site');
   siteInput.value              = siteName;
   siteInput.dataset.lastLoaded = hash;
   sanitizeSite(siteInput);
-  document.getElementById('username').value = selectedOption.dataset.username || '';
+  $('username').value = selectedOption.dataset.username || '';
 
-  const master = document.getElementById('master').value;
+  const master = $('master').value;
   if (entry) await loadOptionsFromEntry(entry, master);
 
   // Reset the select back to the placeholder so it acts as a picker
@@ -567,7 +569,7 @@ function onMasterInput() {
 function onSiteInput() {
   // Clear the "already loaded" flag so options reload when the user navigates
   // away and comes back to a previously-saved site name.
-  document.getElementById('site').dataset.lastLoaded = '';
+  $('site').dataset.lastLoaded = '';
   updateButtons();
   clearTimeout(autoLoadTimer);
   autoLoadTimer = setTimeout(autoLoadOptions, 300);
@@ -575,7 +577,7 @@ function onSiteInput() {
 
 function onUsernameInput() {
   // Username is part of the hash key, so a change may match a different saved entry.
-  document.getElementById('site').dataset.lastLoaded = '';
+  $('site').dataset.lastLoaded = '';
   clearTimeout(autoLoadTimer);
   autoLoadTimer = setTimeout(autoLoadOptions, 300);
 }
@@ -591,19 +593,19 @@ async function loadOptionsFromEntry(entry, master) {
     catch { /* wrong master or corrupted — keep fallback */ }
   }
 
-  document.getElementById('len').value       = cfg.len;
-  document.getElementById('version').value   = cfg.counter;
-  document.getElementById('upper').checked   = cfg.upper;
-  document.getElementById('lower').checked   = cfg.lower;
-  document.getElementById('digits').checked  = cfg.digits;
-  document.getElementById('symbols').checked = cfg.symbols;
+  $('len').value       = cfg.len;
+  $('version').value   = cfg.counter;
+  $('upper').checked   = cfg.upper;
+  $('lower').checked   = cfg.lower;
+  $('digits').checked  = cfg.digits;
+  $('symbols').checked = cfg.symbols;
 
   if (master && entry.encAlias) {
-    try { document.getElementById('alias').value    = await decrypt(entry.encAlias, master); }
+    try { $('alias').value    = await decrypt(entry.encAlias, master); }
     catch {}
   }
   if (master && entry.encUser) {
-    try { document.getElementById('username').value = await decrypt(entry.encUser,  master); }
+    try { $('username').value = await decrypt(entry.encUser,  master); }
     catch {}
   }
 }
@@ -611,35 +613,35 @@ async function loadOptionsFromEntry(entry, master) {
 // ── Generate ───────────────────────────────────────────────────────────────
 
 async function generate() {
-  const master   = document.getElementById('master').value;
-  const site     = document.getElementById('site').value;
-  const username = document.getElementById('username').value;
+  const master   = $('master').value;
+  const site     = $('site').value;
+  const username = $('username').value;
 
   if (!master) { showMsg('copy-msg', 'enter your master password', 'err'); return; }
   if (!site)   { showMsg('copy-msg', 'enter a site or use-case',   'err'); return; }
 
-  const len     = parseInt(document.getElementById('len').value)     || 20;
-  const version = parseInt(document.getElementById('version').value) || 1;
-  const upper   = document.getElementById('upper').checked;
-  const lower   = document.getElementById('lower').checked;
-  const digits  = document.getElementById('digits').checked;
-  const symbols = document.getElementById('symbols').checked;
+  const len     = parseInt($('len').value)     || 20;
+  const version = parseInt($('version').value) || 1;
+  const upper   = $('upper').checked;
+  const lower   = $('lower').checked;
+  const digits  = $('digits').checked;
+  const symbols = $('symbols').checked;
 
   currentPw = await derivePassword(master, site, username, version, len, upper, lower, digits, symbols);
 
   // Display the result masked by default.
   pwRevealed = false;
-  document.getElementById('pw-out').textContent = currentPw;
-  document.getElementById('pw-out').classList.add('hidden');
-  document.getElementById('pw-masked').textContent = '•'.repeat(currentPw.length);
-  document.getElementById('pw-masked').classList.remove('hidden');
-  document.getElementById('reveal-btn').textContent = '👁';
-  document.getElementById('result-area').classList.remove('hidden');
-  document.getElementById('copy-msg').innerHTML = '';
+  $('pw-out').textContent = currentPw;
+  $('pw-out').classList.toggle('hidden', !pwRevealed);
+  $('pw-masked').textContent = '•'.repeat(currentPw.length);
+  $('pw-masked').classList.toggle('hidden', pwRevealed);
+  $('reveal-btn').textContent = '👁';
+  $('result-area').classList.remove('hidden');
+  $('copy-msg').innerHTML = '';
   updateButtons();
 
-  if (document.getElementById('autosave').checked) {
-    const alias   = document.getElementById('alias').value.trim();
+  if ($('autosave').checked) {
+    const alias   = $('alias').value.trim();
     const userKey = username.trim().toLowerCase();
 
     // Include username in the hash key so the same site with different users
@@ -665,9 +667,9 @@ async function generate() {
 
 function toggleReveal() {
   pwRevealed = !pwRevealed;
-  document.getElementById('pw-out').classList.toggle('hidden', !pwRevealed);
-  document.getElementById('pw-masked').classList.toggle('hidden', pwRevealed);
-  document.getElementById('reveal-btn').textContent = pwRevealed ? '🙈' : '👁';
+  $('pw-out').classList.toggle('hidden', !pwRevealed);
+  $('pw-masked').classList.toggle('hidden', pwRevealed);
+  $('reveal-btn').textContent = pwRevealed ? '🙈' : '👁';
 }
 
 async function copyPw() {
@@ -684,7 +686,7 @@ async function copyPw() {
       const clipboardText = await navigator.clipboard.readText();
       if (clipboardText === snapshot) await navigator.clipboard.writeText('');
     } catch { /* clipboard read permission denied — skip silently */ }
-    const el = document.getElementById('copy-msg');
+    const el = $('copy-msg');
     if (el) el.innerHTML = '';
   }, 30_000);
 }
@@ -693,23 +695,23 @@ async function copyPw() {
 
 function clearAll() {
   ['master', 'site', 'username', 'alias'].forEach(id => {
-    document.getElementById(id).value = '';
+    $(id).value = '';
   });
-  document.getElementById('site').dataset.lastLoaded = '';
+  $('site').dataset.lastLoaded = '';
 
-  const select     = document.getElementById('site-select');
+  const select     = $('site-select');
   select.innerHTML = '<option value="">saved ▾</option>';
   select.disabled  = true;
 
   currentPw  = '';
   pwRevealed = false;
 
-  document.getElementById('pw-out').textContent         = '';
-  document.getElementById('pw-masked').textContent      = '';
-  document.getElementById('result-area').classList.add('hidden');
-  document.getElementById('copy-msg').innerHTML         = '';
-  document.getElementById('strength-bar').style.width   = '0';
-  document.getElementById('strength-label').textContent = '';
+  $('pw-out').textContent         = '';
+  $('pw-masked').textContent      = '';
+  $('result-area').classList.add('hidden');
+  $('copy-msg').innerHTML         = '';
+  $('strength-bar').style.width   = '0';
+  $('strength-label').textContent = '';
   updateButtons();
 }
 
@@ -719,11 +721,11 @@ function clearAll() {
 // If master is absent, only hashes are shown.
 
 async function renderSites() {
-  const master = document.getElementById('master').value;
+  const master = $('master').value;
   const hashes = siteHashes(db);
 
-  document.getElementById('site-count').textContent = hashes.length;
-  const list = document.getElementById('site-list');
+  $('site-count').textContent = hashes.length;
+  const list = $('site-list');
 
   if (!hashes.length) {
     list.innerHTML = '<span style="font-size:13px;color:var(--text-tertiary)">no sites saved yet.</span>';
@@ -798,7 +800,7 @@ function deleteSite(hash) {
   renderSites();
   updateSiteDropdown();
   showMsg('delete-msg', 'site removed', 'ok');
-  setTimeout(() => { document.getElementById('delete-msg').innerHTML = ''; }, 2000);
+  setTimeout(() => { $('delete-msg').innerHTML = ''; }, 2000);
 }
 
 function clearAllSites() {
@@ -808,11 +810,11 @@ function clearAllSites() {
 
   db = {};
   saveDB();
-  document.getElementById('site').dataset.lastLoaded = '';
+  $('site').dataset.lastLoaded = '';
   renderSites();
   updateSiteDropdown();
   showMsg('delete-msg', 'all sites cleared', 'ok');
-  setTimeout(() => { document.getElementById('delete-msg').innerHTML = ''; }, 2000);
+  setTimeout(() => { $('delete-msg').innerHTML = ''; }, 2000);
 }
 
 // ── Import / Export ────────────────────────────────────────────────────────
@@ -820,7 +822,7 @@ function clearAllSites() {
 // These functions handle only the UI: reading DOM inputs and triggering download/file-pick.
 
 async function exportData() {
-  const master = document.getElementById('master').value;
+  const master = $('master').value;
   if (!master) { showMsg('export-msg', 'enter your master password on the generate tab first', 'err'); return; }
 
   const { payload } = await buildExportPayload(db, master);
@@ -837,8 +839,8 @@ async function exportData() {
 }
 
 async function importData() {
-  const master = document.getElementById('master').value;
-  const file   = document.getElementById('import-file').files[0];
+  const master = $('master').value;
+  const file   = $('import-file').files[0];
 
   if (!master) { showMsg('import-msg', 'enter your master password on the generate tab first', 'err'); return; }
   if (!file)   { showMsg('import-msg', 'select a settings file', 'err'); return; }
